@@ -52,6 +52,8 @@ export interface ChatState {
 	modelsConfig: UiProviderConfig[];
 	/** Built-in providers with auth status (key-only config). */
 	providers: ProviderStatus[];
+	/** Result of the last install_pi_agent run (null while not started/running). */
+	installResult: { ok: boolean; detail: string } | null;
 	/** Path completions for the cwd input. */
 	pathCompletions: { name: string; path: string; type: "dir" | "file" }[];
 	/** Extension widgets (TUI overlays bridged to the web UI). */
@@ -84,6 +86,7 @@ type Action =
 	| { type: "models"; models: ModelInfo[]; loading: boolean }
 	| { type: "models_config"; providers: UiProviderConfig[] }
 	| { type: "providers_status"; providers: ProviderStatus[] }
+	| { type: "install_result"; result: { ok: boolean; detail: string } }
 	| {
 			type: "path_completions";
 			completions: { name: string; path: string; type: "dir" | "file" }[];
@@ -227,6 +230,8 @@ function reducer(state: ChatState, action: Action): ChatState {
 			return { ...state, modelsConfig: action.providers };
 		case "providers_status":
 			return { ...state, providers: action.providers };
+		case "install_result":
+			return { ...state, installResult: action.result };
 		case "path_completions":
 			return { ...state, pathCompletions: action.completions };
 		case "widgets":
@@ -302,6 +307,7 @@ export function useChat() {
 		modelsLoading: false,
 		modelsConfig: [],
 		providers: [],
+		installResult: null,
 		pathCompletions: [],
 		widgets: [],
 		statuses: [],
@@ -422,6 +428,15 @@ export function useChat() {
 					break;
 				case "models":
 					dispatch({ type: "models", models: msg.models, loading: false });
+					break;
+				case "models_config":
+					dispatch({ type: "models_config", providers: msg.providers });
+					break;
+				case "providers_status":
+					dispatch({ type: "providers_status", providers: msg.providers });
+					break;
+				case "install_result":
+					dispatch({ type: "install_result", result: msg });
 					break;
 				case "path_completions":
 					dispatch({ type: "path_completions", completions: msg.completions });

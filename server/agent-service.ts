@@ -733,11 +733,17 @@ export class ClientSession {
 					level: "info",
 					text: "✅ pi agent CLI 安装完成。填入 API 密钥即可开始，或在终端运行 pi 完成登录。",
 				});
+				this.emit({ type: "install_result", ok: true, detail: "" });
 			} else {
 				this.emit({
 					type: "notice",
 					level: "error",
 					text: `pi agent 安装失败（${code ?? "timeout"}）：${out.slice(0, 400)}`,
+				});
+				this.emit({
+					type: "install_result",
+					ok: false,
+					detail: out.slice(0, 600),
 				});
 			}
 		} catch (err) {
@@ -802,25 +808,39 @@ export class ClientSession {
 
 	/** Enumerate pi's built-in providers with auth status (key-only config). */
 	async listProviders(): Promise<void> {
+		const mr = this.runtime.services.modelRuntime;
+		let providers;
 		try {
-			const mr = this.runtime.services.modelRuntime;
-			const providers = mr.getProviders().map((p) => {
-				const st = mr.getProviderAuthStatus(p.id);
-				return {
-					id: p.id,
-					name: p.name,
-					configured: st?.configured ?? false,
-					source: st?.source,
-				};
+			providers = mr.getProviders().map((p) => {
+				try {
+					const st = mr.getProviderAuthStatus(p.id);
+					return {
+						id: p.id,
+						name: p.name,
+						configured: st?.configured ?? false,
+						source: st?.source,
+					};
+				} catch {
+					// One odd provider must not blank the whole list.
+					return { id: p.id, name: p.name, configured: false };
+				}
 			});
-			this.emit({ type: "providers_status", providers });
 		} catch (err) {
 			this.emit({
 				type: "notice",
 				level: "error",
 				text: `获取服务商列表失败：${(err as Error).message}`,
 			});
+			return;
 		}
+		if (providers.length === 0) {
+			this.emit({
+				type: "notice",
+				level: "warning",
+				text: "服务商列表为空——pi 运行时未注册任何提供商",
+			});
+		}
+		this.emit({ type: "providers_status", providers });
 	}
 
 	// ---------------------------------------------------------------------------

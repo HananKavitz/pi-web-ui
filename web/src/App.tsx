@@ -148,6 +148,7 @@ export function App() {
 						send={send}
 						piConfigured={chat.state.piConfigured}
 						providers={chat.providers}
+						installResult={chat.installResult}
 						onClose={() => setSetupDismissed(true)}
 					/>
 				)}

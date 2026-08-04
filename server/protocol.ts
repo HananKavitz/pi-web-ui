@@ -284,6 +284,8 @@ export type ServerMessage =
 	| { type: "models"; models: ModelInfo[] }
 	| { type: "models_config"; providers: UiProviderConfig[] }
 	| { type: "providers_status"; providers: ProviderStatus[] }
+	/** Result of an install_pi_agent run (npm i -g finished or failed). */
+	| { type: "install_result"; ok: boolean; detail: string }
 	| {
 			type: "path_completions";
 			completions: { name: string; path: string; type: "dir" | "file" }[];
