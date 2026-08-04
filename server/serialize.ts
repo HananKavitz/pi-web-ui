@@ -197,3 +197,18 @@ export function serializeMessage(
 			};
 	}
 }
+
+/**
+ * Serialize the in-progress assistant message (agent.state.streamingMessage).
+ *
+ * Unlike persisted messages, the id must be STABLE across snapshots: the SDK
+ * replaces the partial object on every stream event, so a seq-based id would
+ * remount the React component (and collapse open thinking/tool blocks) every
+ * 60ms. The timestamp is fixed at message creation, so `stream-<ts>` stays
+ * constant for the whole stream.
+ */
+export function serializeStreamingMessage(m: AgentMessage): UiMessage | null {
+	const msg = serializeMessage(m, 0);
+	if (!msg) return null;
+	return { ...msg, id: `stream-${m.timestamp ?? 0}` };
+}

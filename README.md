@@ -43,30 +43,104 @@ npm run build        # compiles server (tsc) + frontend (vite)
 npm start            # serves everything on http://localhost:8787
 ```
 
-## One-command run (npm)
+## npm package (install / start / stop / update / uninstall)
 
 The package is published on npm as [`pi-web-ui`](https://www.npmjs.com/package/pi-web-ui).
 
+### Install
+
 ```bash
-# run without installing (pulls the latest, starts on :8787)
+# install globally (recommended)
+npm i -g pi-web-ui
+
+# or run without installing (pulls the latest, starts on :8787)
 npx pi-web-ui
 
-# or install globally and run anywhere
-npm i -g pi-web-ui
-pi-web-ui
-
-# pick a port / workspace
-PORT=9000 PI_WEB_CWD=/path/to/project pi-web-ui
+# or install the local checkout (for testing changes before publishing)
+npm i -g .
 ```
-
-The `pi-web-ui` command starts the production server: it serves the built
-frontend and the WebSocket API from wherever the package is installed — no
-repo checkout needed. It uses **your** `~/.pi/agent` config (auth/models/skills)
-and stores per-client sessions under `<PI_WEB_CWD>/.pi-web`.
 
 > **pi-managed npm?** If your `npm` is the pi wrapper that blocks dependency
 > install scripts, approve node-pty's native build once after installing:
 > `npm approve-scripts node-pty@1.1.0` (standard npm does this automatically).
+
+### Start
+
+```bash
+pi-web-ui                                            # foreground, http://localhost:8787
+PORT=9000 PI_WEB_CWD=/path/to/project pi-web-ui      # custom port / workspace
+```
+
+To run it in the background or auto-start on boot, use a system service —
+see [Deploy & auto-start on boot](#deploy--auto-start-on-boot) (systemd /
+launchd / Docker).
+
+The `pi-web-ui` command serves the built frontend and the WebSocket API from
+wherever the package is installed — no repo checkout needed. It uses **your**
+`~/.pi/agent` config (auth/models/skills) and stores per-client sessions under
+`<PI_WEB_CWD>/.pi-web`.
+
+### Stop
+
+- **Foreground**: press `Ctrl+C` in the terminal running it.
+- **systemd**: `sudo systemctl stop pi-web-ui`
+- **launchd**: `launchctl bootout gui/$(id -u)/com.xingshuyin.pi-web-ui`
+- **Docker**: `docker compose stop` (stop + remove the container: `docker compose down`)
+
+(Background processes should be managed by a system service, not `nohup` —
+service stop commands above also stop and disable auto-start.)
+
+### Verify / version
+
+```bash
+pi-web-ui --version     # CLI version
+npm ls -g pi-web-ui     # installed? which version?
+which pi-web-ui         # executable location
+```
+
+### Update
+
+```bash
+npm i -g pi-web-ui@latest   # upgrade to the latest published version
+# restart the server afterwards for the new version to take effect
+```
+
+### Uninstall
+
+```bash
+npm uninstall -g pi-web-ui
+```
+
+Uninstalling does **not** delete your chats: session data lives in
+`<PI_WEB_CWD>/.pi-web` (or `PI_WEB_DATA_DIR`) and survives uninstall/upgrade.
+
+### Manage as a system service (auto-start)
+
+Install the server as a system service that starts on boot, with a custom
+port and workspace:
+
+```bash
+pi-web-ui server install --port 9000 --cwd /path/to/project   # install + start
+pi-web-ui server status                # running? auto-start?
+pi-web-ui server restart               # restart (also applies config changes)
+pi-web-ui server stop                  # stop + disable auto-start
+pi-web-ui server start                 # start again
+pi-web-ui server uninstall             # remove the service entirely
+```
+
+- **macOS** → launchd agent (no sudo): writes and loads
+  `~/Library/LaunchAgents/com.xingshuyin.pi-web-ui.plist`, restarts on crash
+  (`KeepAlive`), logs to `/tmp/pi-web-ui.log` / `/tmp/pi-web-ui.err`.
+- **Linux** → systemd unit (auto-sudo): writes
+  `/etc/systemd/system/pi-web-ui.service` and runs `systemctl enable --now`,
+  logs via `journalctl -u pi-web-ui -f`.
+- Options: `--port` (default 8787 or `$PORT`), `--cwd` (default `$PI_WEB_CWD`
+  or the current directory), `--data-dir` (sessions), `--name` (custom service
+  name; on macOS the label is `com.xingshuyin.pi-web-ui`, custom names become
+  `com.<name>.server`). `--print` previews the generated unit/plist without
+  applying it.
+- Rerunning `install` with new options regenerates the config and restarts the
+  service — that's how you change the port/cwd of an installed service.
 
 ## Configuration
 
@@ -108,6 +182,12 @@ Key design points:
   event it schedules a throttled (60 ms) full-state snapshot, and the browser
   renders purely from snapshots. Reconnects just re-request `get_state`. Large
   payloads (tool output, text) are capped during serialization (`server/serialize.ts`).
+- **Live assistant streaming.** The in-progress message (SDK
+  `agent.state.streamingMessage`) is serialized into every snapshot, so thinking
+  blocks and answer text appear in the browser as they are generated — with a
+  blinking cursor — instead of only after the turn finishes. The partial message
+  gets a stable `stream-<ts>` id so it stays mounted (open thinking/tool blocks
+  keep their state) across snapshots.
 - **Size-aware attachments.** Clicking + on a file queues it as an attachment
   (shown as chips above the input). On send, the server attaches each file as an
   independent custom message (SDK `sendCustomMessage` + `nextTurn` asides) — the
@@ -185,10 +265,16 @@ Server → client: `ready`, `snapshot` (full `UiState`), `tool_delta`, `notice`,
 
 ## Deploy & auto-start on boot
 
+Quickest path: `pi-web-ui server install --port 8787 --cwd /path` — installs
+and starts the service on boot (see [Manage as a system service](#manage-as-a-system-service-auto-start)).
+The manual alternatives below are kept for reference / non-standard setups.
+
 ### Docker (one command)
 
 ```bash
 docker compose up -d     # builds, starts on :8787, auto-restarts on boot
+docker compose stop      # stop (keeps the container)
+docker compose down      # stop and remove the container
 ```
 
 `restart: unless-stopped` in `docker-compose.yml` brings the server back up
@@ -204,6 +290,8 @@ sudo cp deploy/pi-web-ui.service /etc/systemd/system/
 # edit User/WorkingDirectory/Environment in the unit first
 sudo systemctl daemon-reload
 sudo systemctl enable --now pi-web-ui     # starts now + on every boot
+sudo systemctl stop pi-web-ui             # stop
+sudo systemctl disable pi-web-ui          # stop auto-start on boot
 journalctl -u pi-web-ui -f                # logs
 ```
 
@@ -214,6 +302,7 @@ npm i -g pi-web-ui
 cp deploy/com.xingshuyin.pi-web-ui.plist ~/Library/LaunchAgents/
 # edit ProgramArguments / WorkingDirectory / PI_WEB_CWD (which pi-web-ui)
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.xingshuyin.pi-web-ui.plist
+launchctl bootout gui/$(id -u)/com.xingshuyin.pi-web-ui   # stop + remove auto-start
 # logs: /tmp/pi-web-ui.log, /tmp/pi-web-ui.err
 ```
 

@@ -30,7 +30,7 @@ import type {
 	SessionSummary,
 	UiState,
 } from "./protocol.js";
-import { serializeMessage } from "./serialize.js";
+import { serializeMessage, serializeStreamingMessage } from "./serialize.js";
 import {
 	loadCommands,
 	saveCommandsFile,
@@ -566,6 +566,13 @@ export class ClientSession {
 			messages: state.messages
 				.map((m) => serializeMessage(m, ++this.seq))
 				.filter((m): m is NonNullable<typeof m> => m !== null),
+			// The in-progress assistant message lives in state.streamingMessage
+			// (the SDK only pushes it into state.messages at message_end). Surfacing
+			// it here is what makes thinking + text stream into the browser at
+			// ~60ms granularity instead of appearing only when the turn finishes.
+			streamingMessage: state.streamingMessage
+				? serializeStreamingMessage(state.streamingMessage)
+				: null,
 			isStreaming: this.session.isStreaming,
 			model: model
 				? { id: model.id, name: model.name, provider: model.provider }

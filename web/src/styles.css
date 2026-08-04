@@ -1650,6 +1650,29 @@ body {
 	border-top: 1px solid var(--border-soft);
 }
 
+/* Blinking caret shown while the assistant message is streaming. */
+.stream-cursor {
+	display: inline-block;
+	width: 8px;
+	height: 1.05em;
+	margin-left: 3px;
+	vertical-align: text-bottom;
+	border-radius: 1px;
+	background: var(--accent);
+	animation: stream-blink 1s steps(2, start) infinite;
+}
+
+@keyframes stream-blink {
+	0%,
+	49% {
+		opacity: 1;
+	}
+	50%,
+	100% {
+		opacity: 0;
+	}
+}
+
 /* --------------------------------------------------------------- toolcall */
 
 .toolcall {

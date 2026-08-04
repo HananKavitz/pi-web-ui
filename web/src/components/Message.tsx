@@ -117,6 +117,7 @@ export const Message = memo(function Message({
 						/>
 					))
 				)}
+				{streaming && isLast && <span className="stream-cursor" />}
 			</div>
 		</div>
 	);

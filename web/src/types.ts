@@ -73,6 +73,12 @@ export interface UiState {
 	sessionId: string;
 	sessionFile?: string;
 	messages: UiMessage[];
+	/**
+	 * Live partial assistant message while a run is streaming (server sends the
+	 * SDK's state.streamingMessage in every snapshot; null when idle). Rendered
+	 * after `messages` with a live cursor.
+	 */
+	streamingMessage?: UiMessage | null;
 	isStreaming: boolean;
 	model: UiModelInfo | null;
 	thinkingLevel: string;

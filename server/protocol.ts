@@ -83,6 +83,12 @@ export interface UiState {
 	sessionId: string;
 	sessionFile?: string;
 	messages: UiMessage[];
+	/**
+	 * Live partial assistant message while a run is streaming. The SDK keeps the
+	 * in-progress message in agent.state.streamingMessage — it only enters
+	 * `messages` once the turn finishes (message_end). Null when idle.
+	 */
+	streamingMessage: UiMessage | null;
 	isStreaming: boolean;
 	model: UiModelInfo | null;
 	thinkingLevel: string;

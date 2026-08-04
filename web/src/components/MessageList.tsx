@@ -36,6 +36,10 @@ export function MessageList({ state, liveOutputs }: MessageListProps) {
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [stickBottom, setStickBottom] = useState(true);
 	const stickRef = useRef(true);
+	/** Persisted messages + the live in-progress assistant message (if any). */
+	const messages = state.streamingMessage
+		? [...state.messages, state.streamingMessage]
+		: state.messages;
 
 	const onScroll = useCallback(() => {
 		const el = scrollRef.current;
@@ -50,7 +54,7 @@ export function MessageList({ state, liveOutputs }: MessageListProps) {
 		if (el && stickRef.current) {
 			el.scrollTop = el.scrollHeight;
 		}
-	}, [state.messages, state.isStreaming, liveOutputs]);
+	}, [messages, state.isStreaming, liveOutputs]);
 
 	const scrollToBottom = useCallback(() => {
 		const el = scrollRef.current;
@@ -62,7 +66,7 @@ export function MessageList({ state, liveOutputs }: MessageListProps) {
 	return (
 		<div className="messages-wrap">
 			<div className="messages" ref={scrollRef} onScroll={onScroll}>
-				{state.messages.length === 0 && (
+				{state.messages.length === 0 && !state.streamingMessage && (
 					<div className="empty-state">
 						<div className="empty-logo-wrap">
 							<div className="empty-logo">π</div>
@@ -97,12 +101,21 @@ export function MessageList({ state, liveOutputs }: MessageListProps) {
 					<Message
 						key={m.id}
 						message={m}
-						all={state.messages}
+						all={messages}
 						liveOutputs={liveOutputs}
 						streaming={state.isStreaming}
 					/>
 				))}
-				{state.isStreaming && state.messages.length === 0 && (
+				{state.streamingMessage && (
+					<Message
+						key={state.streamingMessage.id}
+						message={state.streamingMessage}
+						all={messages}
+						liveOutputs={liveOutputs}
+						streaming
+					/>
+				)}
+				{state.isStreaming && messages.length === 0 && (
 					<div className="streaming-wait">正在等待模型响应…</div>
 				)}
 			</div>
