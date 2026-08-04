@@ -1,12 +1,48 @@
+import { useEffect, useRef, useState } from "react";
+import { FiFile, FiFolder } from "react-icons/fi";
 import type { ChatState } from "../use-chat";
 
 interface FooterBarProps {
 	chat: ChatState;
+	send: (
+		msg:
+			| { type: "complete_path"; path: string }
+			| { type: "set_cwd"; path: string },
+	) => boolean;
 }
 
-/** Compact status bar: connection, context usage, cost, session, queue. */
-export function FooterBar({ chat }: FooterBarProps) {
+/**
+ * Compact status bar: connection, context usage, cost, session, queue, and the
+ * workspace path — click the path to switch directories (with completion).
+ */
+export function FooterBar({ chat, send }: FooterBarProps) {
 	const state = chat.state;
+	const [editing, setEditing] = useState(false);
+	const [draft, setDraft] = useState("");
+	const [selIdx, setSelIdx] = useState(0);
+	const inputRef = useRef<HTMLInputElement>(null);
+	const completions = chat.pathCompletions;
+
+	// Debounced path completion requests while editing.
+	useEffect(() => {
+		if (!editing) return;
+		const t = setTimeout(() => {
+			send({ type: "complete_path", path: draft });
+		}, 150);
+		return () => clearTimeout(t);
+	}, [draft, editing, send]);
+
+	// Reset selection whenever the completion list changes.
+	useEffect(() => setSelIdx(0), [completions]);
+
+	// Keep the highlighted item visible while navigating with the keyboard.
+	useEffect(() => {
+		const el = document.querySelector(
+			`.status-completions .pc-item[data-idx="${selIdx}"]`,
+		);
+		el?.scrollIntoView({ block: "nearest" });
+	}, [selIdx]);
+
 	if (!state) return null;
 	const s = state.stats;
 
@@ -29,6 +65,65 @@ export function FooterBar({ chat }: FooterBarProps) {
 					: "ok";
 
 	const queueTotal = state.queue.steering + state.queue.followUp;
+
+	const startEdit = () => {
+		setDraft(state.cwd);
+		setEditing(true);
+	};
+
+	/** Fill the input with a completion and keep browsing (dirs) or stay for submit. */
+	const applyCompletion = (path: string, isDir: boolean) => {
+		// Shell-style: completing into a directory appends a trailing separator so
+		// the next completion lists its contents (\ on Windows, / elsewhere).
+		const sep = path.includes("\\") ? "\\" : "/";
+		setDraft(isDir ? `${path}${sep}` : path);
+		setSelIdx(0);
+		inputRef.current?.focus();
+	};
+
+	const commit = (path: string) => {
+		const trimmed = path.trim();
+		if (trimmed && trimmed !== state.cwd) send({ type: "set_cwd", path: trimmed });
+		setEditing(false);
+	};
+
+	const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+		if (e.key === "ArrowDown") {
+			e.preventDefault();
+			setSelIdx((i) => Math.min(i + 1, completions.length - 1));
+		} else if (e.key === "ArrowUp") {
+			e.preventDefault();
+			setSelIdx((i) => Math.max(i - 1, 0));
+		} else if (e.key === "Tab" && completions.length > 0) {
+			e.preventDefault();
+			const c = completions[Math.min(selIdx, completions.length - 1)];
+			applyCompletion(c.path, c.type === "dir");
+		} else if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+			const trimmed = draft.trim();
+			if (trimmed.endsWith("/") || trimmed.endsWith("\\")) {
+				// Explicit directory (trailing separator) → switch immediately.
+				commit(trimmed);
+			} else if (completions.some((c) => c.path === trimmed)) {
+				// Input exactly matches a suggestion → switch to it.
+				commit(trimmed);
+			} else if (completions.length > 0 && completions[selIdx]) {
+				// Fill the highlighted completion first; press Enter again to switch.
+				e.preventDefault();
+				const c = completions[selIdx];
+				applyCompletion(c.path, c.type === "dir");
+			} else {
+				commit(trimmed);
+			}
+		} else if (e.key === "Escape") {
+			if (completions.length > 0) {
+				// First Esc closes the suggestion list; second exits editing.
+				e.stopPropagation();
+				send({ type: "complete_path", path: "" }); // clears list
+			} else {
+				setEditing(false);
+			}
+		}
+	};
 
 	return (
 		<footer className="statusbar">
@@ -81,9 +176,55 @@ export function FooterBar({ chat }: FooterBarProps) {
 				</>
 			)}
 
-			<span className="status-item status-cwd" title={`工作目录：${state.cwd}`}>
-				📁 {state.cwd}
-			</span>
+			{editing ? (
+				<div className="status-cwd-wrap">
+					<input
+						ref={inputRef}
+						className="status-cwd-input"
+						value={draft}
+						autoFocus
+						placeholder="输入路径，Enter 切换"
+						onChange={(e) => setDraft(e.target.value)}
+						onKeyDown={onKeyDown}
+						onBlur={() => setEditing(false)}
+					/>
+					{completions.length > 0 && (
+						<ul
+							className="status-completions"
+							onMouseDown={(e) => e.preventDefault()} // keep input focused
+						>
+							{completions.map((c, i) => (
+								<li key={c.path}>
+									<button
+										type="button"
+										data-idx={i}
+										className={`pc-item ${i === selIdx ? "sel" : ""}`}
+										onMouseEnter={() => setSelIdx(i)}
+										onClick={() => applyCompletion(c.path, c.type === "dir")}
+									>
+										<span className="pc-icon">
+											{c.type === "dir" ? <FiFolder /> : <FiFile />}
+										</span>
+										<span className="pc-body">
+											<span className="pc-name">{c.name}</span>
+											<span className="pc-path">{c.path}</span>
+										</span>
+									</button>
+								</li>
+							))}
+						</ul>
+					)}
+				</div>
+			) : (
+				<button
+					type="button"
+					className="status-item status-cwd"
+					title={`工作目录：${state.cwd}（点击切换）`}
+					onClick={startEdit}
+				>
+					📁 {state.cwd}
+				</button>
+			)}
 		</footer>
 	);
 }

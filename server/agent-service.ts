@@ -1500,8 +1500,7 @@ export class ClientSession {
 				expanded.lastIndexOf("/"),
 				expanded.lastIndexOf("\\"),
 			);
-			const dirPart =
-				lastSlash >= 0 ? expanded.slice(0, lastSlash + 1) : "";
+			const dirPart = lastSlash >= 0 ? expanded.slice(0, lastSlash + 1) : "";
 			const prefix = lastSlash >= 0 ? expanded.slice(lastSlash + 1) : expanded;
 
 			const dirents = await fs

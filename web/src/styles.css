@@ -125,60 +125,6 @@ body {
 	flex-shrink: 0;
 }
 
-.panel-cwd {
-	flex: 1;
-	font-size: 10.5px;
-	color: var(--text-faint);
-	font-family: var(--mono);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.cwd-bar {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	width: 100%;
-	border: none;
-	background: transparent;
-	padding: 0;
-	cursor: pointer;
-	text-align: left;
-}
-.cwd-bar:hover .panel-cwd {
-	color: var(--text);
-}
-
-.cwd-label {
-	flex-shrink: 0;
-	font-size: 10.5px;
-	color: var(--text-faint);
-}
-
-.cwd-edit {
-	flex-shrink: 0;
-	font-size: 11px;
-	color: var(--text-faint);
-	opacity: 0;
-	transition: opacity 0.1s;
-}
-.cwd-bar:hover .cwd-edit {
-	opacity: 1;
-}
-
-.cwd-input {
-	width: 100%;
-	border: 1px solid var(--accent);
-	border-radius: 6px;
-	background: var(--bg-elev2);
-	color: var(--text);
-	font-family: var(--mono);
-	font-size: 11px;
-	padding: 4px 6px;
-	outline: none;
-}
-
 /* ------------------------------------------------------ extension widgets */
 
 .panel-widgets {
@@ -200,7 +146,6 @@ body {
 .widget:last-child {
 	margin-bottom: 0;
 }
-
 .widget-title {
 	padding: 4px 10px;
 	font-size: 10.5px;
@@ -220,28 +165,6 @@ body {
 	color: var(--text-dim);
 	white-space: pre;
 	overflow-x: auto;
-}
-
-.cwd-edit-wrap {
-	position: relative;
-}
-
-.path-completions {
-	position: absolute;
-	bottom: calc(100% + 6px);
-	left: 0;
-	right: 0;
-	max-height: 260px;
-	overflow-y: auto;
-	overflow-x: hidden; /* no horizontal scrollbar */
-	margin: 0;
-	padding: 4px;
-	list-style: none;
-	background: var(--bg-elev2);
-	border: 1px solid var(--border);
-	border-radius: 8px;
-	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-	z-index: 60;
 }
 
 .pc-item {
@@ -1180,16 +1103,65 @@ body {
 	flex-shrink: 0;
 }
 
-/* Right-aligned workspace path in the status bar. */
+/* Right-aligned workspace path in the status bar — click to edit. */
 .status-cwd {
 	margin-left: auto;
 	max-width: 42%;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	color: var(--text-faint);
+	border: none;
+	background: transparent;
+	font: inherit;
+	font-size: 11px;
+	cursor: pointer;
+	padding: 2px 4px;
+	border-radius: 4px;
 }
 .status-cwd:hover {
 	color: var(--text-dim);
+	background: var(--bg-elev2);
+}
+
+.status-cwd-wrap {
+	position: relative;
+	margin-left: auto;
+	max-width: 46%;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+}
+
+.status-cwd-input {
+	width: 100%;
+	border: 1px solid var(--accent);
+	border-radius: 6px;
+	background: var(--bg-elev2);
+	color: var(--text);
+	font-family: var(--mono);
+	font-size: 11px;
+	padding: 3px 7px;
+	outline: none;
+}
+
+/* Completion popup floats above the footer, fixed so the statusbar's
+   overflow:hidden can't clip it. */
+.status-completions {
+	position: fixed;
+	right: 16px;
+	bottom: 40px;
+	width: min(440px, calc(100vw - 32px));
+	max-height: 260px;
+	overflow-y: auto;
+	overflow-x: hidden;
+	margin: 0;
+	padding: 4px;
+	list-style: none;
+	background: var(--bg-elev2);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.45);
+	z-index: 200;
 }
 
 .status-queue {

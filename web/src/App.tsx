@@ -137,7 +137,7 @@ export function App() {
 					<TerminalPanel chat={chat} send={send} terminal={terminal} />
 				</div>
 			</div>
-			<FooterBar chat={chat} />
+			<FooterBar chat={chat} send={send} />
 			{chat.dialog && <Dialog dialog={chat.dialog} send={send} />}
 			{chat.ready &&
 				chat.state &&
