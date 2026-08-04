@@ -13,10 +13,11 @@
  * `${pwd}` inside cwd/command resolves to the agent session's current working
  * directory (the same directory the agent operates in — see set_cwd).
  */
-import { existsSync } from "node:fs";
+import { chmodSync, existsSync, readdirSync, statSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { spawn, type IPty } from "node-pty";
 import type { CommandDef, ServerMessage } from "./protocol.js";
 
@@ -152,6 +153,65 @@ const SHELL = isWindows
 /** `-i` is POSIX-only; cmd.exe / powershell.exe start interactively on their own. */
 const SHELL_ARGS: string[] = isWindows ? [] : ["-i"];
 
+// ---------------------------------------------------------------------------
+// spawn-helper permission repair (node-pty macOS prebuilds)
+// ---------------------------------------------------------------------------
+// node-pty 1.1.0 publishes its macOS prebuilds with `spawn-helper` lacking the
+// execute bit (mode 0644 in the npm tarball), so posix_spawn fails with EACCES
+// and node-pty throws the generic "posix_spawnp failed". Locally-built
+// copies (build/Release) are fine; every `npm install` that picks the prebuild
+// — e.g. `npm i -g pi-web-ui`, which is what system-service installs run — is
+// broken until the bit is restored. Self-heal at startup, best-effort.
+
+const require = createRequire(import.meta.url);
+
+/** Absolute paths of every node-pty spawn-helper this install can exec. */
+function spawnHelperPaths(): string[] {
+	try {
+		// require.resolve("node-pty") → <pkg>/lib/index.js → package root is two up.
+		const pkgDir = dirname(dirname(require.resolve("node-pty")));
+		const out: string[] = [];
+		const built = join(pkgDir, "build", "Release", "spawn-helper");
+		if (existsSync(built)) out.push(built);
+		const prebuildsDir = join(pkgDir, "prebuilds");
+		if (existsSync(prebuildsDir)) {
+			for (const entry of readdirSync(prebuildsDir)) {
+				const p = join(prebuildsDir, entry, "spawn-helper");
+				if (existsSync(p)) out.push(p);
+			}
+		}
+		return out;
+	} catch {
+		return [];
+	}
+}
+
+/** Restore the +x bit on node-pty's spawn-helper binaries (idempotent). */
+function repairSpawnHelperPermissions(): void {
+	if (isWindows) return;
+	for (const p of spawnHelperPaths()) {
+		try {
+			if ((statSync(p).mode & 0o111) === 0) chmodSync(p, 0o755);
+		} catch {
+			// best-effort; a read-only node_modules just keeps the old failure
+		}
+	}
+}
+repairSpawnHelperPermissions();
+
+/** Path of a still-broken helper, for the error hint ("" when none). */
+function brokenSpawnHelper(): string {
+	if (isWindows) return "";
+	for (const p of spawnHelperPaths()) {
+		try {
+			if ((statSync(p).mode & 0o111) === 0) return p;
+		} catch {
+			// ignore
+		}
+	}
+	return "";
+}
+
 /**
  * Owns one or more PTYs for a client. All output is forwarded as
  * `terminal_output` messages through the provided emit (broadcast to every
@@ -249,7 +309,13 @@ export class TerminalManager {
 				env: { ...process.env, TERM: "xterm-256color" },
 			});
 		} catch (err) {
-			this.fail(id, `启动终端失败：${(err as Error).message}`);
+			const helper = brokenSpawnHelper();
+			this.fail(
+				id,
+				helper
+					? `启动终端失败：${(err as Error).message}（node-pty 的 spawn-helper 缺少执行权限，请运行：chmod +x "${helper}"）`
+					: `启动终端失败：${(err as Error).message}`,
+			);
 			return false;
 		}
 		const entry: TermEntry = {
