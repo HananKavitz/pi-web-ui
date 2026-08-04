@@ -140,8 +140,17 @@ interface TermEntry {
 	exited: boolean;
 }
 
-const SHELL = process.env.SHELL || "bash";
-const SHELL_ARGS = ["-i"];
+const isWindows = process.platform === "win32";
+/**
+ * Interactive shell for PTYs. Windows has no $SHELL: use Git Bash if the user
+ * has it, otherwise the console host from $COMSPEC (always set → cmd.exe).
+ * POSIX uses the user's login shell, falling back to bash.
+ */
+const SHELL = isWindows
+	? process.env.SHELL || process.env.COMSPEC || "powershell.exe"
+	: process.env.SHELL || "bash";
+/** `-i` is POSIX-only; cmd.exe / powershell.exe start interactively on their own. */
+const SHELL_ARGS: string[] = isWindows ? [] : ["-i"];
 
 /**
  * Owns one or more PTYs for a client. All output is forwarded as
@@ -208,7 +217,10 @@ export class TerminalManager {
 		// Clear the previous run's output, then show a banner and run the command
 		// (the PTY input buffer holds it until the shell is ready).
 		this.writeOut(id, "\x1b[2J\x1b[3J\x1b[H");
-		this.writeOut(id, `\x1b[90m> ${command}\x1b[0m  \x1b[90m(${dir})\x1b[0m\r\n`);
+		this.writeOut(
+			id,
+			`\x1b[90m> ${command}\x1b[0m  \x1b[90m(${dir})\x1b[0m\r\n`,
+		);
 		if (command) this.input(id, command + "\r");
 	}
 

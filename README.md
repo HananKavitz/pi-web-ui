@@ -72,7 +72,7 @@ PORT=9000 PI_WEB_CWD=/path/to/project pi-web-ui      # custom port / workspace
 ```
 
 To run it in the background or auto-start on boot, use a system service —
-see [Deploy & auto-start on boot](#deploy--auto-start-on-boot) (systemd /
+see [Deploy &amp; auto-start on boot](#deploy--auto-start-on-boot) (systemd /
 launchd / Docker).
 
 The `pi-web-ui` command serves the built frontend and the WebSocket API from
@@ -85,6 +85,9 @@ wherever the package is installed — no repo checkout needed. It uses **your**
 - **Foreground**: press `Ctrl+C` in the terminal running it.
 - **systemd**: `sudo systemctl stop pi-web-ui`
 - **launchd**: `launchctl bootout gui/$(id -u)/com.xingshuyin.pi-web-ui`
+- **Windows (scheduled task)**: `pi-web-ui server stop` (or
+  `schtasks /End /TN pi-web-ui`; stops the running instance, auto-start stays
+  until `server uninstall`)
 - **Docker**: `docker compose stop` (stop + remove the container: `docker compose down`)
 
 (Background processes should be managed by a system service, not `nohup` —
@@ -134,23 +137,28 @@ pi-web-ui server uninstall             # remove the service entirely
 - **Linux** → systemd unit (auto-sudo): writes
   `/etc/systemd/system/pi-web-ui.service` and runs `systemctl enable --now`,
   logs via `journalctl -u pi-web-ui -f`.
+- **Windows** → Task Scheduler (no admin): creates a user task that starts at
+  logon (same as a launchd agent). It runs a `.cmd` wrapper generated at
+  `%APPDATA%\pi-web-ui\pi-web-ui.cmd` (sets env, cd's to the workspace,
+  launches node, appends logs to `%USERPROFILE%\pi-web-ui.log`). The task XML
+  is saved next to it; restarts on failure.
 - Options: `--port` (default 8787 or `$PORT`), `--cwd` (default `$PI_WEB_CWD`
   or the current directory), `--data-dir` (sessions), `--name` (custom service
   name; on macOS the label is `com.xingshuyin.pi-web-ui`, custom names become
-  `com.<name>.server`). `--print` previews the generated unit/plist without
-  applying it.
+  `com.<name>.server`). `--print` previews the generated unit/plist/task files
+  without applying it.
 - Rerunning `install` with new options regenerates the config and restarts the
   service — that's how you change the port/cwd of an installed service.
 
 ## Configuration
 
-| Env var | Default | Description |
-| --- | --- | --- |
-| `PORT` | `8787` | HTTP/WebSocket port |
-| `PI_WEB_CWD` | server's cwd | The workspace directory the agent operates in (read/edit/bash/write) |
-| `PI_WEB_DATA_DIR` | `<cwd>/.pi-web` | Where per-client session dirs are stored |
-| `PI_WEB_INLINE_FILE_MAX` | `12288` (12KB) | Text attachments at or below this size are inlined into the model context; larger files are passed as path references and the model reads them on demand (saves tokens for small edits) |
-| `PI_CODING_AGENT_DIR` | `~/.pi/agent` | pi config dir (auth.json, models.json, skills, extensions) |
+| Env var                    | Default           | Description                                                                                                                                                                             |
+| -------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                   | `8787`          | HTTP/WebSocket port                                                                                                                                                                     |
+| `PI_WEB_CWD`             | server's cwd      | The workspace directory the agent operates in (read/edit/bash/write)                                                                                                                    |
+| `PI_WEB_DATA_DIR`        | `<cwd>/.pi-web` | Where per-client session dirs are stored                                                                                                                                                |
+| `PI_WEB_INLINE_FILE_MAX` | `12288` (12KB)  | Text attachments at or below this size are inlined into the model context; larger files are passed as path references and the model reads them on demand (saves tokens for small edits) |
+| `PI_CODING_AGENT_DIR`    | `~/.pi/agent`   | pi config dir (auth.json, models.json, skills, extensions)                                                                                                                              |
 
 Example — point the agent at a project:
 
@@ -228,10 +236,10 @@ with three panes:
   `${pwd}` resolves to the agent's current working directory (the one shown in the chat
   view's file panel, changeable via set_cwd); `~` and relative paths also work. The `+`
   button at the top of the command panel creates a new entry.
-
-- **Middle — the terminal**: each tab is a real PTY (your `$SHELL`); output streams live
-  and you can type, Ctrl+C, resize, etc. exactly like a desktop terminal.
-
+- **Middle — the terminal**: each tab is a real PTY (your `$SHELL` on
+  macOS/Linux; PowerShell or cmd.exe — `$COMSPEC` — on Windows); output
+  streams live and you can type, Ctrl+C, resize, etc. exactly like a desktop
+  terminal. Git Bash users on Windows get their `$SHELL` automatically.
 - **Right — 终端 (tabs)**: VSCode-style vertical tab strip. `+` opens a plain shell in the
   current directory. Closing a tab kills its process.
 
@@ -254,13 +262,13 @@ Server → client: `ready`, `snapshot` (full `UiState`), `tool_delta`, `notice`,
 
 ## Scripts
 
-| Script | What it does |
-| --- | --- |
-| `npm run dev` | server (tsx watch) + Vite dev server with WS proxy |
-| `npm run build` | type-check + build frontend and server |
-| `npm start` | run the production server (serves `web/dist`) |
-| `npm run typecheck` | `tsc --noEmit` for both server and web |
-| `node terminal-smoke-test.mjs` | WS-level terminal/commands protocol test (build first) |
+| Script                             | What it does                                            |
+| ---------------------------------- | ------------------------------------------------------- |
+| `npm run dev`                    | server (tsx watch) + Vite dev server with WS proxy      |
+| `npm run build`                  | type-check + build frontend and server                  |
+| `npm start`                      | run the production server (serves`web/dist`)          |
+| `npm run typecheck`              | `tsc --noEmit` for both server and web                |
+| `node terminal-smoke-test.mjs`   | WS-level terminal/commands protocol test (build first)  |
 | `node terminal-browser-test.mjs` | headless-browser E2E of the terminal view (build first) |
 
 ## Deploy & auto-start on boot
@@ -306,8 +314,36 @@ launchctl bootout gui/$(id -u)/com.xingshuyin.pi-web-ui   # stop + remove auto-s
 # logs: /tmp/pi-web-ui.log, /tmp/pi-web-ui.err
 ```
 
-Both templates use `KeepAlive`/`Restart=on-failure` so the server survives
-crashes, and start at login/boot automatically.
+### Windows — Task Scheduler
+
+Easiest path (no admin, generates everything):
+
+```bat
+npm i -g pi-web-ui
+pi-web-ui server install --port 8787 --cwd C:\path\to\project
+pi-web-ui server status
+pi-web-ui server restart
+pi-web-ui server stop        :: stop the running instance (auto-start stays)
+pi-web-ui server uninstall   :: remove the task entirely
+```
+
+What it does: writes `%APPDATA%\pi-web-ui\pi-web-ui.cmd` (a `.cmd` wrapper
+that sets `PORT`/`PI_WEB_CWD`, cd's to the workspace, launches node and
+appends output to `%USERPROFILE%\pi-web-ui.log`) plus the Task Scheduler XML,
+then registers a **logon** task (`schtasks /Create /XML` — the task runs when
+you log in, same as a launchd agent; no admin needed). Preview both generated
+files without installing: `pi-web-ui server install --print`.
+
+Manual alternative with `deploy/pi-web-ui-task.xml`: edit the paths, save the
+file as **UTF-16 LE** (schtasks requires it), then
+`schtasks /Create /TN "pi-web-ui" /XML pi-web-ui-task.xml /F` and
+`schtasks /Run /TN "pi-web-ui"`.
+
+> **Boot-start without login?** A logon task needs an interactive session, just
+> like a launchd agent. For headless/always-on Windows use Docker (see above).
+
+The three templates use `KeepAlive` / `Restart=on-failure` / `RestartOnFailure`
+so the server survives crashes, and start at login/boot automatically.
 
 ## License
 
