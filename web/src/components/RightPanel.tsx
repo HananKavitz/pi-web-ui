@@ -62,9 +62,10 @@ export function RightPanel({ chat, send, onAttach }: RightPanelProps) {
 
 	/** Fill the input with a completion and keep browsing (dirs) or stay for submit. */
 	const applyCompletion = (path: string, isDir: boolean) => {
-		// Shell-style: completing into a directory appends a trailing slash so the
-		// next completion lists its contents.
-		setCwdDraft(isDir ? `${path}/` : path);
+		// Shell-style: completing into a directory appends a trailing separator so
+		// the next completion lists its contents (\ on Windows, / elsewhere).
+		const sep = path.includes("\\") ? "\\" : "/";
+		setCwdDraft(isDir ? `${path}${sep}` : path);
 		setSelIdx(0);
 		cwdInputRef.current?.focus();
 	};
@@ -82,7 +83,7 @@ export function RightPanel({ chat, send, onAttach }: RightPanelProps) {
 			applyCompletion(c.path, c.type === "dir");
 		} else if (e.key === "Enter" && !e.nativeEvent.isComposing) {
 			const trimmed = cwdDraft.trim();
-			if (trimmed.endsWith("/")) {
+			if (trimmed.endsWith("/") || trimmed.endsWith("\\")) {
 				// Explicit directory (trailing slash) → switch immediately.
 				setEditingCwd(false);
 				send({ type: "set_cwd", path: trimmed });

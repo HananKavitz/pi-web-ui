@@ -1475,24 +1475,33 @@ export class ClientSession {
 			this.emit({ type: "path_completions", completions: [] });
 		try {
 			const fs = await import("node:fs/promises");
-			const { resolve, sep } = await import("node:path");
+			const { resolve, sep, isAbsolute } = await import("node:path");
 			const { homedir } = await import("node:os");
 			const home = homedir();
 
-			// Expand ~ and relative inputs to an absolute path.
+			// Expand ~ and relative inputs to an absolute path. Windows users type
+			// backslashes (P:\agent) and ~\ — handle both separator styles.
 			let expanded = input.trim();
 			if (expanded === "") {
 				empty();
 				return;
 			}
-			if (expanded === "~") expanded = `${home}${sep}`;
-			else if (expanded.startsWith("~/")) expanded = home + expanded.slice(1);
-			else if (!expanded.startsWith("/"))
+			if (expanded === "~" || expanded === "~\\") {
+				expanded = home;
+			} else if (expanded.startsWith("~/") || expanded.startsWith("~\\")) {
+				expanded = home + sep + expanded.slice(2);
+			} else if (!isAbsolute(expanded)) {
 				expanded = resolve(this.cwd, expanded);
+			}
 
-			// Split into parent dir + prefix (handle trailing slash = browse a dir).
-			const lastSlash = expanded.lastIndexOf("/");
-			const dirPart = lastSlash >= 0 ? expanded.slice(0, lastSlash + 1) : "/";
+			// Split into parent dir + prefix on the LAST separator of either style
+			// (Windows accepts both / and \, so P:\agent/de must work too).
+			const lastSlash = Math.max(
+				expanded.lastIndexOf("/"),
+				expanded.lastIndexOf("\\"),
+			);
+			const dirPart =
+				lastSlash >= 0 ? expanded.slice(0, lastSlash + 1) : "";
 			const prefix = lastSlash >= 0 ? expanded.slice(lastSlash + 1) : expanded;
 
 			const dirents = await fs
