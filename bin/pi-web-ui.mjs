@@ -68,6 +68,24 @@ server 选项:
   PORT / PI_WEB_CWD / PI_WEB_DATA_DIR / PI_CODING_AGENT_DIR
 `;
 
+/** Minimum Node required by the pi SDK (its dist uses `import … with { type: "json" }`). */
+const NODE_MIN = [22, 19, 0];
+function checkNodeVersion() {
+	const v = process.versions.node.split(".").map(Number);
+	const tooOld =
+		v[0] < NODE_MIN[0] ||
+		(v[0] === NODE_MIN[0] && v[1] < NODE_MIN[1]) ||
+		(v[0] === NODE_MIN[0] && v[1] === NODE_MIN[1] && v[2] < NODE_MIN[2]);
+	if (tooOld) {
+		console.error(
+			`✖ pi-web-ui 需要 Node.js >= ${NODE_MIN.join(".")}（当前 ${process.versions.node}）。\n` +
+				`  pi SDK 的代码使用了 import attributes（with）语法，旧版 Node 无法解析。\n` +
+				`  请升级 Node：https://nodejs.org（或 nvm-windows / fnm）后重装：npm i -g pi-web-ui`, 
+		);
+		process.exit(1);
+	}
+}
+
 function fail(msg) {
 	console.error(`✖ ${msg}`);
 	process.exit(1);
@@ -712,6 +730,7 @@ async function serverCmd(argv) {
 }
 
 async function main() {
+	checkNodeVersion();
 	const argv = process.argv.slice(2);
 	if (argv.length === 0) {
 		await startForeground({});

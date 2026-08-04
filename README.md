@@ -28,7 +28,9 @@ your existing pi auth/config/extensions — nothing extra to install or configur
 
 ## Quick start
 
-Requires Node.js ≥ 20.11 and a configured pi install (run `pi` once to log in).
+Requires Node.js ≥ 22.19 (the pi SDK requires it; older Node fails with
+`Unexpected token 'with'` when loading the SDK) and a configured pi install
+(run `pi` once to log in).
 
 ```bash
 npm install
