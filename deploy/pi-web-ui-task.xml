@@ -12,9 +12,11 @@
     schtasks /Run /TN "pi-web-ui"
 
   Notes:
-    - The task points at the .cmd wrapper the CLI generates at
-      %APPDATA%\pi-web-ui\pi-web-ui.cmd (it sets PORT/PI_WEB_CWD, cd's to the
-      workspace, launches node, and appends output to %USERPROFILE%\pi-web-ui.log).
+    - The task runs the PowerShell launcher the CLI generates at
+      %APPDATA%\pi-web-ui\pi-web-ui.ps1 with -WindowStyle Hidden, so the
+      server runs with no black console window (nothing to accidentally
+      close/kill). The ps1 sets PORT/PI_WEB_CWD, cd's to the workspace,
+      launches node, and appends output to %USERPROFILE%\pi-web-ui.log.
       Preview both generated files with: pi-web-ui server install --print
     - Save this file as UTF-16 LE (schtasks requires it; the CLI does this
       automatically when it writes the task XML).
@@ -61,8 +63,8 @@
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>C:\Windows\System32\cmd.exe</Command>
-      <Arguments>/c ""%APPDATA%\pi-web-ui\pi-web-ui.cmd""</Arguments>
+      <Command>C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe</Command>
+      <Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "%APPDATA%\pi-web-ui\pi-web-ui.ps1"</Arguments>
       <WorkingDirectory>%USERPROFILE%</WorkingDirectory>
     </Exec>
   </Actions>

@@ -140,8 +140,10 @@ pi-web-ui server uninstall             # remove the service entirely
   `/etc/systemd/system/pi-web-ui.service` and runs `systemctl enable --now`,
   logs via `journalctl -u pi-web-ui -f`.
 - **Windows** → Task Scheduler (no admin): creates a user task that starts at
-  logon (same as a launchd agent). It runs a `.cmd` wrapper generated at
-  `%APPDATA%\pi-web-ui\pi-web-ui.cmd` (sets env, cd's to the workspace,
+  logon (same as a launchd agent). It runs a PowerShell launcher generated at
+  `%APPDATA%\pi-web-ui\pi-web-ui.ps1` via `powershell.exe -WindowStyle
+  Hidden` — no black console window stays open, so there's nothing to
+  accidentally close/kill. The launcher sets env, cd's to the workspace,
   launches node, appends logs to `%USERPROFILE%\pi-web-ui.log`). The task XML
   is saved next to it; restarts on failure.
 - Options: `--port` (default 8787 or `$PORT`), `--cwd` (default `$PI_WEB_CWD`
@@ -336,12 +338,14 @@ pi-web-ui server stop        :: stop the running instance (auto-start stays)
 pi-web-ui server uninstall   :: remove the task entirely
 ```
 
-What it does: writes `%APPDATA%\pi-web-ui\pi-web-ui.cmd` (a `.cmd` wrapper
+What it does: writes `%APPDATA%\pi-web-ui\pi-web-ui.ps1` (a PowerShell launcher
 that sets `PORT`/`PI_WEB_CWD`, cd's to the workspace, launches node and
 appends output to `%USERPROFILE%\pi-web-ui.log`) plus the Task Scheduler XML,
 then registers a **logon** task (`schtasks /Create /XML` — the task runs when
-you log in, same as a launchd agent; no admin needed). Preview both generated
-files without installing: `pi-web-ui server install --print`.
+you log in, same as a launchd agent; no admin needed). The task invokes
+`powershell.exe -WindowStyle Hidden`, so the server runs with **no black
+console window** — there is nothing to accidentally close or kill. Preview
+both generated files without installing: `pi-web-ui server install --print`.
 
 Manual alternative with `deploy/pi-web-ui-task.xml`: edit the paths, save the
 file as **UTF-16 LE** (schtasks requires it), then

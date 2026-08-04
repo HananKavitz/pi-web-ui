@@ -54,7 +54,7 @@ pi-web-ui/
 │   │   └── components/         # 见下
 │   └── dist/                   # 构建产物（gitignore，但打进 npm 包）
 ├── bin/pi-web-ui.mjs           # CLI：前台启动 / --port --cwd --data-dir / server install|uninstall|start|stop|restart|status
-│                               #   （macOS→launchd，Linux→systemd，Windows→schtasks 计划任务）
+│                               #   （macOS→launchd，Linux→systemd，Windows→schtasks 计划任务、隐藏窗口）
 ├── deploy/                     # 部署示例：launchd plist / systemd unit / Windows 任务 XML
 ├── Dockerfile / docker-compose.yml
 ├── freeze-test.mjs 等           # 仓库根的手写 Playwright E2E 脚本（chromium headless）
@@ -210,7 +210,7 @@ pi-web-ui --port 9000 --cwd /path          # 前台
 pi-web-ui server install [--port --cwd --data-dir --name]   # 开机自启：
                                            #   macOS→launchd（无需 sudo）
                                            #   Linux→systemd（自动 sudo）
-                                           #   Windows→计划任务（登录自启）
+                                           #   Windows→计划任务（登录自启，隐藏窗口无黑窗）
 pi-web-ui server status|restart|stop|uninstall
 # Docker：docker-compose.yml（端口映射 + 挂载数据目录）
 ```
