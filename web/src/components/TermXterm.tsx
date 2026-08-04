@@ -82,6 +82,33 @@ export function TermXterm({
 		termRef.current = { term, fit };
 		if (active) term.focus();
 
+		// xterm maps Ctrl+V to ^V (0x16, readline quoted-insert) and Ctrl+C to
+		// ^C, preventDefault()ing both, so the browser's native copy/paste never
+		// fires. Returning false skips xterm's key handling entirely:
+		//   · Ctrl+V / Cmd+V → browser-native paste (event lands on xterm's
+		//     helper textarea and is forwarded to the shell)
+		//   · Ctrl+C with a selection → copy instead of ^C (text staged in the
+		//     helper textarea, same trick as xterm's own right-click copy; no
+		//     clipboard-API permission needed, works over plain http)
+		term.attachCustomKeyEventHandler((event) => {
+			if (event.type !== "keydown") return true;
+			const key = event.key?.toLowerCase();
+			if ((event.ctrlKey || event.metaKey) && key === "v") {
+				return false;
+			}
+			if (event.ctrlKey && !event.shiftKey && !event.altKey && key === "c") {
+				if (term.hasSelection()) {
+					const ta = term.textarea;
+					if (ta) {
+						ta.value = term.getSelection();
+						ta.select();
+					}
+					return false;
+				}
+			}
+			return true;
+		});
+
 		const unregister = register(terminalId, {
 			write: (data) => term.write(data),
 			dispose: () => term.dispose(),
