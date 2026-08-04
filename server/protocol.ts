@@ -140,7 +140,12 @@ export type ClientMessage =
 	| {
 			type: "prompt";
 			text: string;
-			attachments?: { path: string; mode?: "inline" | "reference" }[];
+			attachments?: {
+				path: string;
+				mode?: "inline" | "reference" | "lines";
+				/** 1-based inclusive line range (mode "lines" only). */
+				lines?: { start: number; end: number };
+			}[];
 	  }
 	// -- terminal ------------------------------------------------------------
 	| {
@@ -173,6 +178,8 @@ export type ClientMessage =
 	| { type: "list_sessions" }
 	| { type: "switch_session"; path: string }
 	| { type: "list_files"; path?: string }
+	/** Read a workspace file for the preview panel (size-capped, binary-safe). */
+	| { type: "read_file"; path: string }
 	| { type: "list_models" }
 	| { type: "set_model"; modelId: string }
 	| { type: "set_thinking"; level: string }
@@ -280,6 +287,19 @@ export type ServerMessage =
 			path: string;
 			parent: string | null;
 			entries: FileEntry[];
+	  }
+	/** Content of a workspace file for the preview panel. */
+	| {
+			type: "file_content";
+			path: string;
+			name: string;
+			text: string;
+			truncated: boolean;
+			binary: boolean;
+			/** Total line count of the *read* portion (equal to lines in text). */
+			lines: number;
+			/** Total file size in bytes. */
+			size: number;
 	  }
 	| { type: "models"; models: ModelInfo[] }
 	| { type: "models_config"; providers: UiProviderConfig[] }

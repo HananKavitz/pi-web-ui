@@ -7,12 +7,13 @@ import { useT } from "../i18n";
 interface ChatInputProps {
 	chat: ChatState;
 	send: (msg: ClientMessage) => boolean;
-	/** Files/folders attached via the right panel, waiting to be sent. */
+	/** Files/folders attached via the right panel / preview, waiting to be sent. */
 	attachments: {
 		path: string;
 		name: string;
-		mode: "inline" | "reference";
+		mode: "inline" | "reference" | "lines";
 		isDir?: boolean;
+		lines?: { start: number; end: number };
 	}[];
 	onRemoveAttachment: (path: string) => void;
 	/** Called after a prompt is successfully sent — clears pending attachments. */
@@ -64,6 +65,7 @@ export function ChatInput({
 				attachments: attachments.map((a) => ({
 					path: a.path,
 					mode: a.mode,
+					...(a.lines ? { lines: a.lines } : {}),
 				})),
 			})
 		) {
@@ -86,17 +88,28 @@ export function ChatInput({
 				<div className="attach-row">
 					{attachments.map((a) => (
 						<span
-							key={a.path}
+							key={`${a.path}|${a.mode}|${a.lines ? `${a.lines.start}-${a.lines.end}` : ""}`}
 							className={`attach-chip ${a.mode}`}
 							title={
 								a.isDir
 									? t("folderRef", { path: a.path })
 									: a.mode === "reference"
 										? t("refOnly", { path: a.path })
-										: t("attachContent", { path: a.path })
+										: a.mode === "lines" && a.lines
+											? t("attachLines", {
+													path: a.path,
+													start: a.lines.start,
+													end: a.lines.end,
+												})
+											: t("attachContent", { path: a.path })
 							}
 						>
 							{a.isDir ? "📁" : a.mode === "reference" ? "🔗" : "📎"} {a.name}
+							{a.mode === "lines" && a.lines && (
+								<span className="attach-range">
+									L{a.lines.start}-{a.lines.end}
+								</span>
+							)}
 							<button
 								type="button"
 								className="attach-remove"

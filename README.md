@@ -207,6 +207,13 @@ Key design points:
   reference and the model reads them on demand with its `read` tool, so attaching
   a 5 MB file costs only a few tokens until the model actually looks at it.
   Images are always attached as image content.
+- **File preview with line selection.** Click a file name (or its 👁 button) in
+  the right panel to open a preview modal with line numbers. Click / drag /
+  Shift+click to select a line range, then “添加到对话” to queue it as a `lines`
+  attachment — the server inlines only the selected range
+  (`<file path=... lines="2-3">`), so you can point the agent at exactly the
+  code you mean without dumping the whole file. Preview reads are capped at
+  512 KB and binary files are detected and refused.
 - **Live tool output.** `bash_execution_update` / `tool_execution_update` events
   are forwarded as lightweight `tool_delta` messages so terminal output streams
   in real time; the final output arrives in the toolResult message on the next

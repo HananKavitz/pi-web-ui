@@ -47,6 +47,8 @@ import {
 const SNAPSHOT_INTERVAL_MS = 60;
 const WIDGET_REFRESH_MS = 2000;
 const WIDGET_WIDTH = 80;
+/** Preview panel cap: only the first 512KB of a file is ever read/sent. */
+const MAX_PREVIEW_BYTES = 512 * 1024;
 
 // ---------------------------------------------------------------------------
 // Web UI context adapter — bridges extension UI calls (setWidget/notify) to the
@@ -323,11 +325,15 @@ const IGNORED_ENTRIES = new Set([
 ]);
 
 function countLines(buf: Buffer): number {
+	if (buf.length === 0) return 0;
+	const hasTrailingNewline = buf[buf.length - 1] === 10; /* \n */
 	let lines = 0;
 	for (let i = 0; i < buf.length; i++) {
-		if (buf[i] === 10 /* \n */) lines++;
+		if (buf[i] === 10) lines++;
 	}
-	return lines + (buf.length > 0 ? 1 : 0);
+	// A trailing newline terminates the last line instead of starting an empty
+	// one — matches the client preview's split-based line numbering.
+	return hasTrailingNewline ? lines : lines + 1;
 }
 
 function extractPartialText(partial: unknown): string | null {
@@ -1061,7 +1067,11 @@ export class ClientSession {
 
 	async prompt(
 		text: string,
-		attachments?: { path: string; mode?: "inline" | "reference" }[],
+		attachments?: {
+			path: string;
+			mode?: "inline" | "reference" | "lines";
+			lines?: { start: number; end: number };
+		}[],
 	): Promise<void> {
 		try {
 			const s = this.session;
@@ -1093,10 +1103,17 @@ export class ClientSession {
 	 * Text files are size-aware: small files are inlined into the message so the
 	 * model sees them immediately; large files are passed as a <file path="...">
 	 * reference and the model reads them on demand with its read tool (which has
-	 * built-in truncation). Images are always passed as image content.
+	 * built-in truncation). Images are always passed as image content. Mode
+	 * "lines" inlines only a 1-based inclusive line range of the file.
 	 */
 	private async buildAttachmentMessages(
-		attachments: { path: string; mode?: "inline" | "reference" }[] | undefined,
+		attachments:
+			| {
+					path: string;
+					mode?: "inline" | "reference" | "lines";
+					lines?: { start: number; end: number };
+			  }[]
+			| undefined,
 	): Promise<{ message: Parameters<AgentSession["sendCustomMessage"]>[0] }[]> {
 		if (!attachments || attachments.length === 0) return [];
 		const fs = await import("node:fs/promises");
@@ -1130,6 +1147,8 @@ export class ClientSession {
 
 		const out: { message: Parameters<AgentSession["sendCustomMessage"]>[0] }[] =
 			[];
+		/** Cap for reading a file in "lines" mode (selected slice is inlined). */
+		const MAX_LINES_READ_BYTES = 2 * 1024 * 1024;
 
 		for (const att of attachments) {
 			const abs = resolve(root, att.path);
@@ -1256,6 +1275,79 @@ export class ClientSession {
 			// Reference mode is always honored and never reads the file.
 			if (att.mode === "reference") {
 				out.push(makeReference());
+				continue;
+			}
+
+			// Line-range mode: inline only the selected 1-based inclusive range.
+			// Reading is capped so a huge file can't exhaust memory even though
+			// the selected slice is small.
+			if (att.mode === "lines") {
+				const range = att.lines;
+				if (!range || range.start < 1 || range.end < range.start) {
+					this.emit({
+						type: "notice",
+						level: "warning",
+						text: `行范围无效，已改为仅引用：${att.path}`,
+					});
+					out.push(makeReference());
+					continue;
+				}
+				if (stat.size > MAX_LINES_READ_BYTES) {
+					this.emit({
+						type: "notice",
+						level: "warning",
+						text: `文件过大，已改为仅引用：${att.path}`,
+					});
+					out.push(makeReference());
+					continue;
+				}
+				const buf = await fs.readFile(abs);
+				if (buf.includes(0)) {
+					this.emit({
+						type: "notice",
+						level: "warning",
+						text: `二进制文件已改为仅引用：${att.path}`,
+					});
+					out.push(makeReference());
+					continue;
+				}
+				const parts = buf.toString("utf8").split("\n");
+				// A trailing newline yields an empty phantom line — drop it so line
+				// numbers match the preview panel.
+				if (parts.length > 0 && parts[parts.length - 1] === "") parts.pop();
+				const start = Math.min(range.start, parts.length);
+				const end = Math.min(range.end, parts.length);
+				if (start < 1 || end < start) {
+					this.emit({
+						type: "notice",
+						level: "warning",
+						text: `选中行超出文件范围，已改为仅引用：${att.path}`,
+					});
+					out.push(makeReference());
+					continue;
+				}
+				const selected = parts.slice(start - 1, end).join("\n");
+				out.push({
+					message: {
+						customType: "file",
+						content: [
+							{
+								type: "text",
+								text: `\n<file path="${rel}" lines="${start}-${end}">\n\`\`\`\n${selected}\n\`\`\`\n</file>`,
+							},
+						],
+						display: true,
+						details: {
+							name,
+							path: rel,
+							mode: "lines",
+							size: stat.size,
+							lines: end - start + 1,
+							startLine: start,
+							endLine: end,
+						},
+					},
+				});
 				continue;
 			}
 
@@ -1449,6 +1541,74 @@ export class ClientSession {
 				type: "notice",
 				level: "error",
 				text: `读取目录失败：${(err as Error).message}`,
+			});
+		}
+	}
+
+	/** Read a workspace file for the preview panel (size-capped, binary-safe). */
+	async readFile(relPath: string): Promise<void> {
+		try {
+			const fs = await import("node:fs/promises");
+			const { resolve, sep, relative } = await import("node:path");
+			const root = resolve(this.cwd);
+			const abs = resolve(root, relPath);
+			const rel = relative(root, abs);
+			if (rel.startsWith("..") || rel.includes(`${sep}..`)) {
+				this.emit({
+					type: "notice",
+					level: "warning",
+					text: `路径超出工作区：${relPath}`,
+				});
+				return;
+			}
+			const stat = await fs.stat(abs);
+			if (!stat.isFile()) {
+				this.emit({
+					type: "notice",
+					level: "warning",
+					text: `不是文件：${relPath}`,
+				});
+				return;
+			}
+			// Read only the first MAX_PREVIEW_BYTES so huge files can't exhaust
+			// memory or flood the socket.
+			const handle = await fs.open(abs, "r");
+			try {
+				const buf = Buffer.alloc(Math.min(stat.size, MAX_PREVIEW_BYTES));
+				const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
+				const data = buf.subarray(0, bytesRead);
+				const name = relPath.split("/").pop() ?? relPath;
+				if (data.includes(0)) {
+					this.emit({
+						type: "file_content",
+						path: rel,
+						name,
+						text: "",
+						truncated: false,
+						binary: true,
+						lines: 0,
+						size: stat.size,
+					});
+					return;
+				}
+				this.emit({
+					type: "file_content",
+					path: rel,
+					name,
+					text: data.toString("utf8"),
+					truncated: bytesRead < stat.size,
+					binary: false,
+					lines: countLines(data),
+					size: stat.size,
+				});
+			} finally {
+				await handle.close();
+			}
+		} catch (err) {
+			this.emit({
+				type: "notice",
+				level: "error",
+				text: `读取文件失败：${(err as Error).message}`,
 			});
 		}
 	}

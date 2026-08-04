@@ -161,7 +161,10 @@ const SHELL_ARGS: string[] = isWindows ? [] : ["-i"];
  * Default a UTF-8 locale so multibyte text round-trips.
  */
 function shellEnv(): Record<string, string> {
-	const env: Record<string, string> = { ...process.env, TERM: "xterm-256color" };
+	const env: Record<string, string> = {
+		...process.env,
+		TERM: "xterm-256color",
+	};
 	if (!env.LANG && !env.LC_ALL) env.LANG = "en_US.UTF-8";
 	return env;
 }

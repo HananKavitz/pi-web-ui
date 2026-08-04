@@ -9,6 +9,7 @@ import { Dialog } from "./components/Dialog";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { PiSetupModal } from "./components/PiSetupModal";
 import { ModelConfigModal } from "./components/ModelConfigModal";
+import { FilePreview, type PreviewFile } from "./components/FilePreview";
 import { useChat } from "./use-chat";
 import { useT } from "./i18n";
 import {
@@ -22,15 +23,18 @@ import {
 export interface PendingAttachment {
 	path: string;
 	name: string;
-	mode: "inline" | "reference";
+	mode: "inline" | "reference" | "lines";
 	/** Folder path link (always reference mode). */
 	isDir?: boolean;
+	/** 1-based inclusive line range (mode "lines" only). */
+	lines?: { start: number; end: number };
 }
 
 export function App() {
 	const t = useT();
 	const { chat, send, dismissNotice, terminal } = useChat();
 	const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+	const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
 	const [view, setView] = useState<"chat" | "terminal">("chat");
 	// Setup modal: one-time prompt when the pi agent config is missing.
 	const [setupDismissed, setSetupDismissed] = useState(false);
@@ -78,13 +82,21 @@ export function App() {
 	const attach = (
 		path: string,
 		name: string,
-		mode: "inline" | "reference",
+		mode: "inline" | "reference" | "lines",
 		isDir = false,
+		lines?: { start: number; end: number },
 	) => {
+		// Dedupe on path + mode + line range so the same file can be attached
+		// multiple ways (e.g. full content AND a line range) without doubling.
+		const key = `${path}|${mode}|${lines ? `${lines.start}-${lines.end}` : ""}`;
 		setAttachments((prev) =>
-			prev.some((a) => a.path === path)
+			prev.some(
+				(a) =>
+					`${a.path}|${a.mode}|${a.lines ? `${a.lines.start}-${a.lines.end}` : ""}` ===
+					key,
+			)
 				? prev
-				: [...prev, { path, name, mode, isDir }],
+				: [...prev, { path, name, mode, isDir, ...(lines ? { lines } : {}) }],
 		);
 	};
 	const removeAttachment = (path: string) =>
@@ -133,7 +145,12 @@ export function App() {
 							onSent={() => setAttachments([])}
 						/>
 					</main>
-					<RightPanel chat={chat} send={send} onAttach={attach} />
+					<RightPanel
+						chat={chat}
+						send={send}
+						onAttach={attach}
+						onPreview={(path, name) => setPreviewFile({ path, name })}
+					/>
 				</div>
 				<div className={`view-pane ${view === "terminal" ? "" : "hidden"}`}>
 					<TerminalPanel chat={chat} send={send} terminal={terminal} />
@@ -141,6 +158,18 @@ export function App() {
 			</div>
 			<FooterBar chat={chat} send={send} />
 			{chat.dialog && <Dialog dialog={chat.dialog} send={send} />}
+			{previewFile && (
+				<FilePreview
+					file={previewFile}
+					content={chat.fileContent}
+					send={send}
+					onAddLines={(path, name, start, end) =>
+						attach(path, name, "lines", false, { start, end })
+					}
+					onAttach={(path, name, mode) => attach(path, name, mode)}
+					onClose={() => setPreviewFile(null)}
+				/>
+			)}
 			{chat.ready &&
 				chat.state &&
 				chat.state.piConfigured === false &&

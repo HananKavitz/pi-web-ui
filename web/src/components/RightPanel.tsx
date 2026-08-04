@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	FiChevronRight,
+	FiEye,
 	FiFile,
 	FiFolder,
 	FiLink,
@@ -22,9 +23,16 @@ interface RightPanelProps {
 		mode: AttachMode,
 		isDir?: boolean,
 	) => void;
+	/** Called when the user clicks a file to open the preview modal. */
+	onPreview: (path: string, name: string) => void;
 }
 
-export function RightPanel({ chat, send, onAttach }: RightPanelProps) {
+export function RightPanel({
+	chat,
+	send,
+	onAttach,
+	onPreview,
+}: RightPanelProps) {
 	const t = useT();
 	const [currentPath, setCurrentPath] = useState<string>("");
 	const [loading, setLoading] = useState(false);
@@ -138,10 +146,23 @@ export function RightPanel({ chat, send, onAttach }: RightPanelProps) {
 								</div>
 							) : (
 								<div key={e.path} className="file-item file">
-									<FiFile className="file-icon" />
-									<span className="file-name" title={e.path}>
-										{e.name}
-									</span>
+									<button
+										type="button"
+										className="file-name"
+										title={`${e.path} — ${t("previewFile")}`}
+										onClick={() => onPreview(e.path, e.name)}
+									>
+										<FiFile className="file-icon" />
+										<span className="file-name-text">{e.name}</span>
+									</button>
+									<button
+										type="button"
+										className="file-attach preview"
+										data-tip={t("previewFile")}
+										onClick={() => onPreview(e.path, e.name)}
+									>
+										<FiEye />
+									</button>
 									<button
 										type="button"
 										className="file-attach inline"

@@ -115,6 +115,9 @@ wss.on("connection", (ws) => {
 			case "list_files":
 				void cs.listFiles(msg.path);
 				break;
+			case "read_file":
+				void cs.readFile(msg.path);
+				break;
 			case "list_models":
 				void cs.listModels();
 				break;

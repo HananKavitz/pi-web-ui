@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef } from "react";
 import type {
 	ClientMessage,
 	CommandDef,
+	FileContent,
 	FileListing,
 	ModelInfo,
 	ProviderStatus,
@@ -44,6 +45,8 @@ export interface ChatState {
 	sessions: SessionSummary[];
 	/** Workspace file listing for the right panel. */
 	files: FileListing | null;
+	/** Latest file content fetched for the preview panel (path-matched in the modal). */
+	fileContent: FileContent | null;
 	/** Models with valid auth, for the model dropdown. */
 	models: ModelInfo[];
 	/** True while a model list request is in flight. */
@@ -83,6 +86,7 @@ type Action =
 	| { type: "ready"; serverVersion: string }
 	| { type: "sessions"; sessions: SessionSummary[] }
 	| { type: "files"; files: FileListing }
+	| { type: "file_content"; content: FileContent }
 	| { type: "models"; models: ModelInfo[]; loading: boolean }
 	| { type: "models_config"; providers: UiProviderConfig[] }
 	| { type: "providers_status"; providers: ProviderStatus[] }
@@ -224,6 +228,8 @@ function reducer(state: ChatState, action: Action): ChatState {
 			return { ...state, sessions: action.sessions };
 		case "files":
 			return { ...state, files: action.files };
+		case "file_content":
+			return { ...state, fileContent: action.content };
 		case "models":
 			return { ...state, models: action.models, modelsLoading: action.loading };
 		case "models_config":
@@ -303,6 +309,7 @@ export function useChat() {
 		notices: [],
 		sessions: [],
 		files: null,
+		fileContent: null,
 		models: [],
 		modelsLoading: false,
 		modelsConfig: [],
@@ -425,6 +432,9 @@ export function useChat() {
 					break;
 				case "files":
 					dispatch({ type: "files", files: msg });
+					break;
+				case "file_content":
+					dispatch({ type: "file_content", content: msg });
 					break;
 				case "models":
 					dispatch({ type: "models", models: msg.models, loading: false });

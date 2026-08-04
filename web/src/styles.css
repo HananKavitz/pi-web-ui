@@ -396,6 +396,26 @@ body {
 .file-name {
 	flex: 1;
 	min-width: 0;
+	/* Now a button (click = open preview): reset button chrome. */
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	border: none;
+	background: transparent;
+	color: inherit;
+	font-size: inherit;
+	font-family: inherit;
+	text-align: left;
+	padding: 0;
+	overflow: hidden;
+	cursor: pointer;
+}
+.file-name:hover {
+	color: var(--accent);
+}
+.file-name-text {
+	flex: 1;
+	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -493,6 +513,16 @@ body {
 	color: #fff;
 }
 
+/* eye icon : open the preview modal */
+.file-attach.preview {
+	background: rgba(96, 165, 250, 0.14);
+	color: var(--accent);
+}
+.file-attach.preview:hover {
+	background: var(--accent);
+	color: #fff;
+}
+
 /* link icon : reference path only */
 .file-attach.ref {
 	background: rgba(251, 191, 36, 0.12);
@@ -529,6 +559,19 @@ body {
 .attach-chip.reference {
 	border-color: rgba(251, 191, 36, 0.4);
 	background: rgba(251, 191, 36, 0.1);
+}
+.attach-chip.lines {
+	border-color: rgba(52, 211, 153, 0.4);
+	background: rgba(52, 211, 153, 0.1);
+}
+
+.attach-range {
+	font-family: var(--mono);
+	font-size: 10.5px;
+	padding: 0 6px;
+	border-radius: 999px;
+	background: rgba(52, 211, 153, 0.18);
+	color: var(--green);
 }
 
 .attach-remove {
@@ -619,6 +662,10 @@ body {
 .attachcard-mode.ref {
 	color: var(--amber);
 	border-color: rgba(251, 191, 36, 0.4);
+}
+.attachcard-mode.lines {
+	color: var(--accent);
+	border-color: rgba(139, 92, 246, 0.4);
 }
 
 .attachcard-refnote {
@@ -2783,4 +2830,249 @@ body {
 	color: var(--text-faint);
 	min-width: 34px;
 	text-align: right;
+}
+
+/* ------------------------------------------------------------ file preview modal */
+
+.fp-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 250;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(4, 5, 8, 0.62);
+	backdrop-filter: blur(3px);
+	padding: 28px;
+}
+
+.fp {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	max-width: 860px;
+	height: min(78vh, 720px);
+	background: var(--bg-elev2);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+	overflow: hidden;
+}
+
+.fp-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 14px;
+	border-bottom: 1px solid var(--border-soft);
+	flex-shrink: 0;
+	min-width: 0;
+}
+
+.fp-name {
+	font-family: var(--mono);
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--text);
+	white-space: nowrap;
+}
+
+.fp-path {
+	font-family: var(--mono);
+	font-size: 11px;
+	color: var(--text-faint);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	flex: 1;
+	min-width: 0;
+}
+
+.fp-meta {
+	font-size: 11px;
+	color: var(--text-faint);
+	flex-shrink: 0;
+	white-space: nowrap;
+}
+
+.fp-head-actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-shrink: 0;
+}
+
+.fp-attach {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-elev);
+	color: var(--text-dim);
+	cursor: pointer;
+}
+.fp-attach.inline:hover {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: #fff;
+}
+.fp-attach.ref:hover {
+	background: var(--amber);
+	border-color: var(--amber);
+	color: #1a1a1a;
+}
+
+/* Tooltip for the header icon buttons (same pattern as .file-attach). */
+.fp-attach::after {
+	content: attr(data-tip);
+	position: absolute;
+	top: calc(100% + 8px);
+	right: 0;
+	background: #232733;
+	color: var(--text);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	padding: 4px 9px;
+	font-size: 11px;
+	line-height: 1.4;
+	white-space: nowrap;
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity 0.09s ease;
+	z-index: 40;
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+.fp-attach:hover::after {
+	opacity: 1;
+}
+
+.fp-close {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: transparent;
+	color: var(--text-dim);
+	cursor: pointer;
+	margin-left: 2px;
+}
+.fp-close:hover {
+	color: var(--red);
+	border-color: var(--red);
+}
+
+.fp-notice {
+	padding: 7px 14px;
+	font-size: 11.5px;
+	color: var(--amber);
+	background: rgba(251, 191, 36, 0.08);
+	border-bottom: 1px solid var(--border-soft);
+	flex-shrink: 0;
+}
+
+.fp-empty {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-faint);
+	font-size: 13px;
+	padding: 40px;
+}
+
+.fp-code {
+	flex: 1;
+	overflow: auto;
+	background: rgba(0, 0, 0, 0.22);
+	font-family: var(--mono);
+	font-size: 12px;
+	line-height: 1.6;
+	padding: 6px 0;
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+.fp-line {
+	display: flex;
+	gap: 0;
+	padding-right: 16px;
+	cursor: pointer;
+}
+.fp-line:hover {
+	background: rgba(139, 92, 246, 0.08);
+}
+.fp-line.sel {
+	background: rgba(139, 92, 246, 0.22);
+}
+.fp-code.dragging .fp-line.sel {
+	background: rgba(139, 92, 246, 0.3);
+}
+
+.fp-num {
+	flex-shrink: 0;
+	width: 52px;
+	padding-right: 12px;
+	text-align: right;
+	color: var(--text-faint);
+	background: transparent;
+	border-right: 1px solid var(--border-soft);
+	margin-right: 14px;
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+.fp-code-text {
+	flex: 1;
+	min-width: 0;
+	white-space: pre;
+	color: var(--text-dim);
+}
+.fp-line.sel .fp-code-text {
+	color: var(--text);
+}
+
+.fp-lines-note {
+	padding: 8px 16px 6px;
+	font-size: 11px;
+	color: var(--text-faint);
+}
+
+.fp-foot {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 14px;
+	border-top: 1px solid var(--border-soft);
+	flex-shrink: 0;
+	background: var(--bg-elev);
+}
+
+.fp-hint {
+	flex: 1;
+	min-width: 0;
+	font-size: 12px;
+	color: var(--text-faint);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.fp-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-shrink: 0;
+}
+
+.fp-actions .btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
 }

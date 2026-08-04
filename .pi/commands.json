@@ -9,6 +9,11 @@
       "name": "top",
       "command": "top",
       "cwd": "${pwd}"
+    },
+    {
+      "name": "run",
+      "command": "uv run 人员人脸姿态.py",
+      "cwd": "${pwd}"
     }
   ]
 }

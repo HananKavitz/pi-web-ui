@@ -72,6 +72,7 @@ const zh = {
 	folderRef: "文件夹引用：{path}",
 	refOnly: "仅引用：{path}",
 	attachContent: "附加内容：{path}",
+	attachLines: "附加选中行：{path}（第 {start}-{end} 行）",
 	removeAttachment: "移除附件",
 	attachHint: "将随下一条消息发送",
 	followUpQueued: "⏳ {n} 条跟进消息排队中",
@@ -99,6 +100,20 @@ const zh = {
 	linkFolderTip: "链接文件夹路径到对话",
 	attachInlineTip: "附加内容到对话",
 	referenceTip: "仅引用路径（AI 按需读取）",
+	previewFile: "预览",
+
+	/* file preview */
+	selectLinesHint: "点击选择行；拖拽或 Shift+点击选择范围",
+	selectedRange: "已选 {n} 行（第 {start}-{end} 行）",
+	fileLines: "{n} 行",
+	selectAll: "全选",
+	clearSelection: "清除",
+	addToChat: "添加到对话",
+	addedToChat: "已添加",
+	previewTruncated: "⚠ 文件过大，仅预览前 512KB",
+	previewLinesTruncated: "… 文件行数过多，仅显示前 {n} 行",
+	binaryFile: "二进制文件，无法预览",
+	emptyFile: "（空文件）",
 
 	/* dialog */
 	pluginRequest: "插件请求",
@@ -150,6 +165,7 @@ const zh = {
 	refOnlyShort: "仅引用",
 	folderRefShort: "文件夹 · 仅引用",
 	inlineLines: "内联 · {n} 行",
+	inlineLinesRange: "行 {start}-{end}",
 	image: "🖼 图片",
 	folderNotExpanded: "文件夹，未展开内容 —— 智能体会按需浏览目录",
 	fileNotExpanded: "文件较大（{size}），未展开内容 —— 智能体会按需读取",
@@ -311,6 +327,7 @@ const en: Record<keyof typeof zh, string> = {
 	folderRef: "Folder reference: {path}",
 	refOnly: "Reference only: {path}",
 	attachContent: "Attached content: {path}",
+	attachLines: "Attached selected lines: {path} (lines {start}-{end})",
 	removeAttachment: "Remove attachment",
 	attachHint: "Will be sent with the next message",
 	followUpQueued: "⏳ {n} follow-up message(s) queued",
@@ -338,6 +355,20 @@ const en: Record<keyof typeof zh, string> = {
 	linkFolderTip: "Link folder path to chat",
 	attachInlineTip: "Attach content to chat",
 	referenceTip: "Reference path only (AI reads on demand)",
+	previewFile: "Preview",
+
+	/* file preview */
+	selectLinesHint: "Click a line to select; drag or Shift+click for a range",
+	selectedRange: "Selected {n} lines (lines {start}-{end})",
+	fileLines: "{n} lines",
+	selectAll: "Select all",
+	clearSelection: "Clear",
+	addToChat: "Add to chat",
+	addedToChat: "Added",
+	previewTruncated: "⚠ File too large — previewing the first 512KB",
+	previewLinesTruncated: "… too many lines — showing the first {n}",
+	binaryFile: "Binary file — preview not available",
+	emptyFile: "(empty file)",
 
 	/* dialog */
 	pluginRequest: "Plugin request",
@@ -389,6 +420,7 @@ const en: Record<keyof typeof zh, string> = {
 	refOnlyShort: "Reference only",
 	folderRefShort: "Folder · reference only",
 	inlineLines: "Inline · {n} lines",
+	inlineLinesRange: "Lines {start}-{end}",
 	image: "🖼 Image",
 	folderNotExpanded:
 		"Folder — content not expanded, the agent will browse it as needed",

@@ -139,9 +139,11 @@ function AttachmentCard({ message }: { message: UiMessage }) {
 	const details = (message.details ?? {}) as {
 		name?: string;
 		path?: string;
-		mode?: "inline" | "reference";
+		mode?: "inline" | "reference" | "lines";
 		size?: number;
 		lines?: number;
+		startLine?: number;
+		endLine?: number;
 		type?: "folder";
 	};
 	const name = details.name ?? details.path ?? t("attachment");
@@ -170,14 +172,21 @@ function AttachmentCard({ message }: { message: UiMessage }) {
 				{details.path && (
 					<span className="attachcard-path">{details.path}</span>
 				)}
-				<span className={`attachcard-mode ${isReference ? "ref" : "inline"}`}>
+				<span
+					className={`attachcard-mode ${details.mode === "lines" ? "lines" : isReference ? "ref" : "inline"}`}
+				>
 					{isReference
 						? isFolder
 							? t("folderRefShort")
 							: `${t("refOnlyShort")} · ${formatSize(details.size)}`
 						: image
 							? t("image")
-							: t("inlineLines", { n: details.lines ?? lines })}
+							: details.mode === "lines"
+								? t("inlineLinesRange", {
+										start: details.startLine ?? 1,
+										end: details.endLine ?? details.lines ?? 1,
+									})
+								: t("inlineLines", { n: details.lines ?? lines })}
 				</span>
 				{!isReference && (open ? <FiChevronDown /> : <FiChevronRight />)}
 			</button>
@@ -211,7 +220,7 @@ function formatSize(bytes?: number): string {
 /** Strip the <file path="..."> ``` ... ``` </file> wrapper for display. */
 function stripFileWrapper(text: string): string {
 	const m = text.match(
-		/^\s*<file path="[^"]*">\s*```\s*\n?([\s\S]*?)\n?```\s*<\/file>\s*$/,
+		/^\s*<file path="[^"]*"(?:\s+lines="[^"]*")?>\s*```\s*\n?([\s\S]*?)\n?```\s*<\/file>\s*$/,
 	);
 	return m ? m[1].trim() : text.trim();
 }
