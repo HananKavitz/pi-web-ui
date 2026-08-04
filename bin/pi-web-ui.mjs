@@ -420,6 +420,12 @@ function serviceEnv(port, cwd, dataDir) {
 	// Interactive Windows tasks inherit the user's PATH; only systemd/launchd
 	// run with a minimal environment that needs an explicit PATH.
 	if (!isWin) env.PATH = process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin";
+	// Same for the locale: launchd/systemd drop LANG/LC_ALL, and a C-locale
+	// shell garbles multibyte input in the terminal (UTF-8 continuation
+	// bytes 0x80–0x9F rendered as C1 control chars). Bake the installing
+	// shell's locale into the service env so spawned terminals are UTF-8.
+	if (!isWin && process.env.LANG) env.LANG = process.env.LANG;
+	if (!isWin && process.env.LC_ALL) env.LC_ALL = process.env.LC_ALL;
 	if (dataDir) env.PI_WEB_DATA_DIR = dataDir;
 	return env;
 }

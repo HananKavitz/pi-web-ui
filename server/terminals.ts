@@ -153,6 +153,19 @@ const SHELL = isWindows
 /** `-i` is POSIX-only; cmd.exe / powershell.exe start interactively on their own. */
 const SHELL_ARGS: string[] = isWindows ? [] : ["-i"];
 
+/**
+ * Environment for spawned shells. System services (launchd/systemd) run with
+ * no locale variables, which puts the shell in the C locale: its line editor
+ * then renders UTF-8 continuation bytes 0x80–0x9F as C1 control characters
+ * (e.g. `�<0091><0098>` for 员), garbling Chinese input in the terminal.
+ * Default a UTF-8 locale so multibyte text round-trips.
+ */
+function shellEnv(): Record<string, string> {
+	const env: Record<string, string> = { ...process.env, TERM: "xterm-256color" };
+	if (!env.LANG && !env.LC_ALL) env.LANG = "en_US.UTF-8";
+	return env;
+}
+
 // ---------------------------------------------------------------------------
 // spawn-helper permission repair (node-pty macOS prebuilds)
 // ---------------------------------------------------------------------------
@@ -306,7 +319,7 @@ export class TerminalManager {
 				cols: Math.max(2, Math.floor(cols) || 80),
 				rows: Math.max(2, Math.floor(rows) || 24),
 				cwd: abs,
-				env: { ...process.env, TERM: "xterm-256color" },
+				env: shellEnv(),
 			});
 		} catch (err) {
 			const helper = brokenSpawnHelper();
