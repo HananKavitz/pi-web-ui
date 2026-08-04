@@ -49,9 +49,7 @@ export function PiSetupModal({
 	// Default to the first unconfigured provider once the list arrives.
 	useEffect(() => {
 		if (!provider && providers.length > 0) {
-			setProvider(
-				providers.find((p) => !p.configured)?.id ?? providers[0].id,
-			);
+			setProvider(providers.find((p) => !p.configured)?.id ?? providers[0].id);
 		}
 	}, [providers, provider]);
 
@@ -99,8 +97,8 @@ export function PiSetupModal({
 				</div>
 				<p className="modal-desc">
 					pi-web-ui 需要 pi 的配置目录（
-					<code>~/.pi/agent</code>）和至少一个 API
-					密钥才能运行智能体。pi 内置了 openai、anthropic、deepseek 等服务商
+					<code>~/.pi/agent</code>）和至少一个 API 密钥才能运行智能体。pi 内置了
+					openai、anthropic、deepseek 等服务商
 					——选一个填密钥即可，全程无需打开终端。
 				</p>
 
@@ -136,8 +134,7 @@ export function PiSetupModal({
 								{providers.length === 0 && <option value="">加载中…</option>}
 								{providers.map((p) => (
 									<option key={p.id} value={p.id}>
-										{p.name}（{p.id}）
-										{p.configured ? " · 已配置" : ""}
+										{p.name}（{p.id}）{p.configured ? " · 已配置" : ""}
 									</option>
 								))}
 							</select>

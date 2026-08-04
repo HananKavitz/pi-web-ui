@@ -1180,6 +1180,18 @@ body {
 	flex-shrink: 0;
 }
 
+/* Right-aligned workspace path in the status bar. */
+.status-cwd {
+	margin-left: auto;
+	max-width: 42%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--text-faint);
+}
+.status-cwd:hover {
+	color: var(--text-dim);
+}
+
 .status-queue {
 	color: var(--amber);
 }

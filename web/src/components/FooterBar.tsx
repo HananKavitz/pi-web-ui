@@ -80,6 +80,10 @@ export function FooterBar({ chat }: FooterBarProps) {
 					</span>
 				</>
 			)}
+
+			<span className="status-item status-cwd" title={`工作目录：${state.cwd}`}>
+				📁 {state.cwd}
+			</span>
 		</footer>
 	);
 }
