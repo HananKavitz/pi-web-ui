@@ -1,7 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiArrowDown } from "react-icons/fi";
-import type { UiState } from "../types";
+import type { UiMessage, UiState } from "../types";
 import { Message } from "./Message";
+
+/** Stable shared empty map — passing this (instead of a fresh Map) lets
+ *  React.memo skip messages that have no live tool output to show. */
+const EMPTY_LIVE = new Map<string, { toolName: string; text: string }>();
+
+function hasToolCall(m: UiMessage): boolean {
+	return m.content.some((b) => b.type === "toolCall");
+}
 
 /** Suggested prompts shown on the empty-state welcome page. */
 const EXAMPLES: { icon: string; text: string; prompt: string }[] = [
@@ -40,6 +48,20 @@ export function MessageList({ state, liveOutputs }: MessageListProps) {
 	const messages = state.streamingMessage
 		? [...state.messages, state.streamingMessage]
 		: state.messages;
+	/**
+	 * toolResult lookup, memoized on the messages array. The server keeps the
+	 * array reference stable while the message set is unchanged, so this Map is
+	 * rebuilt only when a new tool result actually arrives — not every snapshot.
+	 */
+	const toolResults = useMemo(() => {
+		const m = new Map<string, UiMessage>();
+		for (const msg of state.messages) {
+			if (msg.role === "toolResult" && msg.toolCallId)
+				m.set(msg.toolCallId, msg);
+		}
+		return m;
+	}, [state.messages]);
+	const lastId = messages.length > 0 ? messages[messages.length - 1].id : null;
 
 	const onScroll = useCallback(() => {
 		const el = scrollRef.current;
@@ -101,18 +123,22 @@ export function MessageList({ state, liveOutputs }: MessageListProps) {
 					<Message
 						key={m.id}
 						message={m}
-						all={messages}
-						liveOutputs={liveOutputs}
+						toolResults={toolResults}
+						liveOutputs={hasToolCall(m) ? liveOutputs : EMPTY_LIVE}
 						streaming={state.isStreaming}
+						isLast={m.id === lastId}
 					/>
 				))}
 				{state.streamingMessage && (
 					<Message
 						key={state.streamingMessage.id}
 						message={state.streamingMessage}
-						all={messages}
-						liveOutputs={liveOutputs}
+						toolResults={toolResults}
+						liveOutputs={
+							hasToolCall(state.streamingMessage) ? liveOutputs : EMPTY_LIVE
+						}
 						streaming
+						isLast
 					/>
 				)}
 				{state.isStreaming && messages.length === 0 && (

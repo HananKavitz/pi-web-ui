@@ -57,19 +57,21 @@ export function asBash(block: UiContentBlock): UiBashBlock | null {
 
 interface MessageProps {
 	message: UiMessage;
-	/** All messages, used to look up toolResult messages by toolCallId. */
-	all: UiMessage[];
+	/** toolResult messages by toolCallId (precomputed in MessageList, memoized). */
+	toolResults: ReadonlyMap<string, UiMessage>;
 	liveOutputs: ReadonlyMap<string, { toolName: string; text: string }>;
 	streaming: boolean;
+	/** True when this is the last rendered message (stream cursor + live blocks). */
+	isLast: boolean;
 }
 
 export const Message = memo(function Message({
 	message,
-	all,
+	toolResults,
 	liveOutputs,
 	streaming,
+	isLast,
 }: MessageProps) {
-	const isLast = all.length > 0 && all[all.length - 1].id === message.id;
 	// toolResult content is rendered inside its toolCall card — never standalone
 	// (otherwise the same output shows twice: formatted card + plain text).
 	if (message.role === "toolResult") return null;
@@ -77,12 +79,9 @@ export const Message = memo(function Message({
 	// the user message text.
 	const isFileAttachment =
 		message.role === "custom" && message.customType === "file";
-
-	const toolResults = new Map<string, UiMessage>();
-	for (const m of all) {
-		if (m.role === "toolResult" && m.toolCallId)
-			toolResults.set(m.toolCallId, m);
-	}
+	// Streaming bubble with no content yet (first token not arrived) — show a
+	// visible “thinking…” placeholder instead of an invisible empty bubble.
+	const isEmptyStreaming = streaming && isLast && message.content.length === 0;
 
 	return (
 		<div className={`msg msg-${message.role}`} data-role={message.role}>
@@ -117,7 +116,15 @@ export const Message = memo(function Message({
 						/>
 					))
 				)}
-				{streaming && isLast && <span className="stream-cursor" />}
+				{isEmptyStreaming && (
+					<div className="thinking-wait">
+						正在思考
+						<span className="dot" />
+					</div>
+				)}
+				{streaming && isLast && !isEmptyStreaming && (
+					<span className="stream-cursor" />
+				)}
 			</div>
 		</div>
 	);
@@ -214,7 +221,7 @@ function Block({
 	isLast,
 }: {
 	block: UiContentBlock;
-	toolResults: Map<string, UiMessage>;
+	toolResults: ReadonlyMap<string, UiMessage>;
 	liveOutputs: ReadonlyMap<string, { toolName: string; text: string }>;
 	streaming: boolean;
 	isLast: boolean;

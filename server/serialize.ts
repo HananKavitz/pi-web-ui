@@ -7,7 +7,7 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { UiContentBlock, UiMessage } from "./protocol.js";
 
 /** AgentMessage is not re-exported from the package root; derive it from AgentSession. */
-type AgentMessage = AgentSession["messages"][number];
+export type AgentMessage = AgentSession["messages"][number];
 
 const TEXT_CAP = 200_000;
 const TOOL_OUTPUT_CAP = 100_000;

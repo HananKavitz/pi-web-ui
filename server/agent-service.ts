@@ -28,9 +28,14 @@ import type {
 	CommandDef,
 	ServerMessage,
 	SessionSummary,
+	UiMessage,
 	UiState,
 } from "./protocol.js";
-import { serializeMessage, serializeStreamingMessage } from "./serialize.js";
+import {
+	serializeMessage,
+	serializeStreamingMessage,
+	type AgentMessage,
+} from "./serialize.js";
 import {
 	loadCommands,
 	saveCommandsFile,
@@ -365,7 +370,20 @@ export class ClientSession {
 	private snapshotTimer: ReturnType<typeof setTimeout> | null = null;
 	private sessionsTimer: ReturnType<typeof setTimeout> | null = null;
 	private version = 0;
-	private seq = 0;
+	/**
+	 * Stable per-message ids: assigned once per (role, timestamp) so snapshot ids
+	 * don't change every 60ms — changing ids would remount the whole list in
+	 * React (collapse open thinking blocks, reset scroll, jank on long chats).
+	 */
+	private msgIds = new Map<string, number>();
+	private nextMsgId = 1;
+	/** Serialized UiMessage cache — object-reference-stable across snapshots, so
+	 *  the frontend's React.memo can skip unchanged messages entirely. */
+	private uiMessageCache = new Map<string, UiMessage>();
+	/** Reused when the message set didn't change, keeping state.messages
+	 *  reference-stable so the frontend can memoize derived maps. */
+	private lastMessagesSig = "";
+	private lastMessagesArray: UiMessage[] = [];
 	private queueSteering = 0;
 	private queueFollowUp = 0;
 	private disposed = false;
@@ -532,6 +550,25 @@ export class ClientSession {
 		}, 800);
 	}
 
+	/** Serialize a persisted message with a STABLE id + cached object reference. */
+	private serializeCached(m: AgentMessage): UiMessage | null {
+		const key =
+			m.role === "toolResult"
+				? `t:${m.toolCallId}`
+				: `${m.role}:${m.timestamp}`;
+		let n = this.msgIds.get(key);
+		if (n === undefined) {
+			n = this.nextMsgId++;
+			this.msgIds.set(key, n);
+		}
+		const cacheKey = `${key}#${n}`;
+		const cached = this.uiMessageCache.get(cacheKey);
+		if (cached) return cached;
+		const msg = serializeMessage(m, n);
+		if (msg) this.uiMessageCache.set(cacheKey, msg);
+		return msg;
+	}
+
 	snapshot(): UiState {
 		const state = this.session.agent.state;
 		const model = state.model;
@@ -558,14 +595,23 @@ export class ClientSession {
 		} catch {
 			// stats are best-effort
 		}
+		const rawMessages = state.messages
+			.map((m) => this.serializeCached(m))
+			.filter((m): m is NonNullable<typeof m> => m !== null);
+		// Reuse the previous array when nothing changed: the element objects are
+		// cached (reference-stable) anyway, and a stable array reference lets the
+		// frontend memoize derived maps instead of rebuilding them every 60ms.
+		const sig = rawMessages.map((m) => m.id).join("\u0001");
+		const messages =
+			sig === this.lastMessagesSig ? this.lastMessagesArray : rawMessages;
+		this.lastMessagesSig = sig;
+		this.lastMessagesArray = rawMessages;
 		return {
 			clientId: this.clientId,
 			cwd: this.cwd,
 			sessionId: this.session.sessionId,
 			sessionFile: this.session.sessionFile,
-			messages: state.messages
-				.map((m) => serializeMessage(m, ++this.seq))
-				.filter((m): m is NonNullable<typeof m> => m !== null),
+			messages,
 			// The in-progress assistant message lives in state.streamingMessage
 			// (the SDK only pushes it into state.messages at message_end). Surfacing
 			// it here is what makes thinking + text stream into the browser at

@@ -1650,6 +1650,59 @@ body {
 	border-top: 1px solid var(--border-soft);
 }
 
+/* Animated “…” on the thinking header while reasoning is streaming live. */
+.thinking-live .thinking-toggle {
+	color: var(--text);
+}
+
+.thinking-live-label {
+	display: inline-flex;
+	align-items: center;
+}
+
+.thinking-live-label .dots::after {
+	content: "";
+	display: inline-block;
+	width: 1.2em;
+	text-align: left;
+	animation: thinking-dots 1.2s steps(4, end) infinite;
+}
+
+@keyframes thinking-dots {
+	0% {
+		content: "";
+	}
+	25% {
+		content: ".";
+	}
+	50% {
+		content: "..";
+	}
+	75% {
+		content: "...";
+	}
+}
+
+/* Visible placeholder while the streaming bubble has no content yet
+   (first token hasn't arrived — otherwise the bubble is invisible). */
+.thinking-wait {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	color: var(--text-dim);
+	font-size: 13px;
+	padding: 2px 0;
+}
+
+.thinking-wait .dot {
+	display: inline-block;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--accent);
+	animation: stream-blink 1s steps(2, start) infinite;
+}
+
 /* Blinking caret shown while the assistant message is streaming. */
 .stream-cursor {
 	display: inline-block;

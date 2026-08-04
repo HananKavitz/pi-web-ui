@@ -8,11 +8,15 @@ interface ThinkingBlockProps {
 }
 
 export function ThinkingBlock({ thinking, streaming }: ThinkingBlockProps) {
-	const [open, setOpen] = useState(false);
+	// While streaming, start expanded so the reasoning is visible as it arrives;
+	// finished messages default to collapsed (tidy summary header).
+	const [open, setOpen] = useState(streaming);
 	const preview = thinking.split("\n")[0].slice(0, 80);
 
 	return (
-		<div className={`thinking ${open ? "open" : ""}`}>
+		<div
+			className={`thinking ${open ? "open" : ""} ${streaming ? "live" : ""}`}
+		>
 			<button
 				type="button"
 				className="thinking-toggle"
@@ -21,7 +25,16 @@ export function ThinkingBlock({ thinking, streaming }: ThinkingBlockProps) {
 				{open ? <FiChevronDown /> : <FiChevronRight />}
 				<FiCpu className="thinking-icon" />
 				<span className="thinking-label">
-					{streaming ? "思考中…" : open ? "思考" : `思考：${preview}`}
+					{streaming ? (
+						<span className="thinking-live-label">
+							思考中
+							<span className="dots" />
+						</span>
+					) : open ? (
+						"思考"
+					) : (
+						`思考：${preview}`
+					)}
 				</span>
 			</button>
 			{open && <div className="thinking-body">{thinking}</div>}

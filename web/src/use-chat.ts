@@ -188,7 +188,7 @@ function reducer(state: ChatState, action: Action): ChatState {
 				...state,
 				ready: true,
 				state: action.state,
-				liveOutputs: pruneLiveOutputs(new Map(state.liveOutputs), action.state),
+				liveOutputs: pruneLiveOutputs(state.liveOutputs, action.state),
 			};
 		case "tool_delta": {
 			const prev = state.liveOutputs.get(action.toolCallId);
