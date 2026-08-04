@@ -12,6 +12,7 @@ import {
 import type { ChatState, TerminalMeta } from "../use-chat";
 import type { ClientMessage, CommandDef } from "../types";
 import { TermXterm } from "./TermXterm";
+import { useT } from "../i18n";
 
 interface TerminalPanelProps {
 	chat: ChatState;
@@ -42,6 +43,7 @@ const EMPTY_DRAFT: Draft = { name: "", command: "", cwd: "${pwd}" };
  *   right  : terminal tabs (VSCode-style vertical strip)
  */
 export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
+	const t = useT();
 	const [activeId, setActiveId] = useState<string | null>(null);
 	// Command list editing state.
 	const [isNew, setIsNew] = useState(false);
@@ -77,7 +79,7 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 
 	const openShell = () =>
 		openTab({
-			title: `终端 ${chat.terminals.length + 1}`,
+			title: t("terminalTitle", { n: chat.terminals.length + 1 }),
 			cwd: chat.state?.cwd ?? "",
 		});
 
@@ -166,12 +168,12 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 			{/* ---------------- left: command list ---------------- */}
 			<aside className="term-side term-commands">
 				<div className="panel-header">
-					<span className="panel-title">命令</span>
+					<span className="panel-title">{t("commands")}</span>
 					<div className="panel-header-actions">
 						<button
 							type="button"
 							className="panel-refresh"
-							title="重新读取 .pi/commands.json"
+							title={t("rerun")}
 							onClick={() => send({ type: "list_commands" })}
 						>
 							<FiRefreshCw />
@@ -179,7 +181,7 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 						<button
 							type="button"
 							className="panel-new"
-							title="新建命令"
+							title={t("newCommand")}
 							onClick={startNew}
 						>
 							<FiPlus />
@@ -190,21 +192,21 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 				<div className="panel-body">
 					{editing ? (
 						<div className="cmd-form">
-							<label htmlFor="cmd-name">名称</label>
+							<label htmlFor="cmd-name">{t("name")}</label>
 							<input
 								id="cmd-name"
 								className="cmd-input"
 								value={draft.name}
-								placeholder="例如：启动开发服务器"
+								placeholder={t("exampleName")}
 								autoFocus
 								onChange={(e) => setDraft({ ...draft, name: e.target.value })}
 							/>
-							<label htmlFor="cmd-command">命令</label>
+							<label htmlFor="cmd-command">{t("command")}</label>
 							<input
 								id="cmd-command"
 								className="cmd-input"
 								value={draft.command}
-								placeholder="例如：npm run dev"
+								placeholder={t("exampleCommand")}
 								onChange={(e) =>
 									setDraft({ ...draft, command: e.target.value })
 								}
@@ -215,8 +217,8 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 								}}
 							/>
 							<label htmlFor="cmd-cwd">
-								目录{" "}
-								<span className="cmd-hint">（${"{pwd}"} = 当前工作目录）</span>
+								{t("directory")}{" "}
+								<span className="cmd-hint">{t("cwdHint")}</span>
 							</label>
 							<input
 								id="cmd-cwd"
@@ -232,7 +234,7 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 							/>
 							<div className="cmd-form-actions">
 								<button type="button" className="btn" onClick={cancelEdit}>
-									取消
+									{t("cancel")}
 								</button>
 								<button
 									type="button"
@@ -240,21 +242,21 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 									disabled={!draft.name.trim() || !draft.command.trim()}
 									onClick={saveDraft}
 								>
-									保存
+									{t("save")}
 								</button>
 							</div>
 						</div>
 					) : (
 						<>
 							{chat.commands.length === 0 && (
-								<div className="panel-empty">还没有命令，点 + 添加一个</div>
+								<div className="panel-empty">{t("noCommands")}</div>
 							)}
 							{chat.commands.map((c, i) => (
 								<div key={i} className="cmd-item">
 									<button
 										type="button"
 										className="cmd-run"
-										title="点击运行"
+										title={t("clickToRun")}
 										onClick={() => runCommand(c)}
 									>
 										<FiPlay />
@@ -262,7 +264,7 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 									<button
 										type="button"
 										className="cmd-main"
-										title="点击运行"
+										title={t("clickToRun")}
 										onClick={() => runCommand(c)}
 									>
 										<span className="cmd-name">{c.name}</span>
@@ -272,7 +274,7 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 									<button
 										type="button"
 										className="cmd-act"
-										title="编辑"
+										title={t("edit")}
 										onClick={() => startEdit(i)}
 									>
 										<FiEdit2 />
@@ -280,10 +282,10 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 									<button
 										type="button"
 										className={`cmd-act del ${confirmDel === i ? "confirm" : ""}`}
-										title="删除"
+										title={t("delete")}
 										onClick={() => requestDelete(i)}
 									>
-										{confirmDel === i ? "确认?" : <FiTrash2 />}
+										{confirmDel === i ? t("confirmQ") : <FiTrash2 />}
 									</button>
 								</div>
 							))}
@@ -298,7 +300,7 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 							{chat.commandsPath || ".pi/commands.json"}
 						</span>
 					</div>
-					<div className="cmd-file-hint">${"{pwd}"} 指代当前工作目录</div>
+					<div className="cmd-file-hint">{t("commandsFileHint")}</div>
 				</div>
 			</aside>
 
@@ -307,10 +309,8 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 				{chat.terminals.length === 0 ? (
 					<div className="term-empty">
 						<FiTerminal className="term-empty-icon" />
-						<div className="term-empty-title">内置终端</div>
-						<div className="term-empty-sub">
-							点击左侧命令运行，或点右侧 + 新建终端
-						</div>
+						<div className="term-empty-title">{t("builtinTerminal")}</div>
+						<div className="term-empty-sub">{t("termEmptySub")}</div>
 					</div>
 				) : (
 					chat.terminals.map((t) => (
@@ -330,11 +330,11 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 			{/* ---------------- right: terminal tabs ---------------- */}
 			<aside className="term-side term-tabs">
 				<div className="panel-header">
-					<span className="panel-title">终端</span>
+					<span className="panel-title">{t("terminal")}</span>
 					<button
 						type="button"
 						className="panel-new"
-						title="新建终端"
+						title={t("newTerminal")}
 						onClick={openShell}
 					>
 						<FiPlus />
@@ -342,27 +342,29 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 				</div>
 				<div className="panel-body">
 					{chat.terminals.length === 0 && (
-						<div className="panel-empty">暂无终端</div>
+						<div className="panel-empty">{t("noTerminal")}</div>
 					)}
-					{chat.terminals.map((t) => (
+					{chat.terminals.map((tab) => (
 						<div
-							key={t.id}
-							className={`term-tab ${t.id === activeId ? "active" : ""}`}
+							key={tab.id}
+							className={`term-tab ${tab.id === activeId ? "active" : ""}`}
 						>
 							<button
 								type="button"
 								className="term-tab-main"
-								title={`${t.cwd}${t.command ? `\n> ${t.command.command}` : ""}`}
-								onClick={() => setActiveId(t.id)}
+								title={`${tab.cwd}${tab.command ? `\n> ${tab.command.command}` : ""}`}
+								onClick={() => setActiveId(tab.id)}
 							>
 								<span
-									className={`term-tab-dot ${t.running ? "run" : "exit"}`}
+									className={`term-tab-dot ${tab.running ? "run" : "exit"}`}
 								/>
 								<span className="term-tab-title">
-									{t.title}
-									{!t.running && (
+									{tab.title}
+									{!tab.running && (
 										<span className="term-tab-exit">
-											（已退出{t.exitCode !== null ? ` ${t.exitCode}` : ""}）
+											{t("exited", {
+												code: tab.exitCode === null ? "" : ` ${tab.exitCode}`,
+											})}
 										</span>
 									)}
 								</span>
@@ -370,8 +372,8 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 							<button
 								type="button"
 								className="term-tab-close"
-								title="关闭终端"
-								onClick={() => closeTab(t.id)}
+								title={t("closeTerminal")}
+								onClick={() => closeTab(tab.id)}
 							>
 								<FiX />
 							</button>

@@ -7,6 +7,7 @@ import {
 	FiTerminal,
 } from "react-icons/fi";
 import type { UiMessage, UiToolCallBlock } from "../types";
+import { useT } from "../i18n";
 
 export interface ToolView {
 	/** Tool result message if the tool already finished. */
@@ -38,6 +39,7 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 	block: UiToolCallBlock;
 	view: ToolView;
 }) {
+	const t = useT();
 	const [open, setOpen] = useState(true);
 	const [copied, setCopied] = useState(false);
 
@@ -51,12 +53,12 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 
 	const statusClass = isError ? "err" : done ? "ok" : running ? "run" : "idle";
 	const statusLabel = isError
-		? "出错"
+		? t("error")
 		: done
-			? "完成"
+			? t("done")
 			: running
-				? "执行中…"
-				: "排队中";
+				? t("running")
+				: t("toolQueued");
 
 	const copyArgs = () => {
 		if (block.argumentsText) {
@@ -76,7 +78,7 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 				<button
 					type="button"
 					className="toolcall-copy"
-					title="复制参数"
+					title={t("copyArgs")}
 					onClick={copyArgs}
 				>
 					{copied ? <FiCheckCircle /> : <FiCopy />}
@@ -103,7 +105,7 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 					{output.length > 0 && (
 						<div className="toolcall-output">
 							<div className="toolcall-output-label">
-								{isError ? "错误输出" : "输出"}
+								{isError ? t("errorOutput") : t("output")}
 								{running && <span className="cursor" />}
 							</div>
 							<pre>{output}</pre>
@@ -111,7 +113,7 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 					)}
 					{running && output.length === 0 && (
 						<div className="toolcall-waiting">
-							<span className="cursor" /> 等待输出…
+							<span className="cursor" /> {t("waitingOutput")}
 						</div>
 					)}
 				</div>

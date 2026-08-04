@@ -6,6 +6,7 @@ import type {
 	UiModelConfigEntry,
 	UiProviderConfig,
 } from "../types";
+import { useT } from "../i18n";
 
 interface ModelConfigModalProps {
 	send: (msg: ClientMessage) => boolean;
@@ -86,6 +87,7 @@ export function ModelConfigModal({
 	providerStatus,
 	onClose,
 }: ModelConfigModalProps) {
+	const t = useT();
 	const [editing, setEditing] = useState<Draft | null>(null);
 	/** Built-in provider rows: providerId → inline key being typed. */
 	const [keys, setKeys] = useState<Record<string, string>>({});
@@ -139,7 +141,10 @@ export function ModelConfigModal({
 	const removeProvider = (p: UiProviderConfig) => {
 		if (
 			window.confirm(
-				`删除服务商 ${p.providerId} 及其 ${p.models.length} 个模型？`,
+				t("deleteProviderConfirm", {
+					id: p.providerId,
+					n: p.models.length,
+				}),
 			)
 		) {
 			send({ type: "delete_model_config", providerId: p.providerId });
@@ -160,23 +165,24 @@ export function ModelConfigModal({
 				<button
 					type="button"
 					className="modal-close"
-					aria-label="关闭"
+					aria-label={t("close")}
 					onClick={onClose}
 				>
 					<FiX />
 				</button>
 				<div className="modal-head">
-					<h2>{editing ? "编辑服务商" : "管理模型"}</h2>
+					<h2>{editing ? t("editProvider") : t("manageModelsTitle")}</h2>
 				</div>
 
 				{!editing ? (
 					<>
 						<div className="form-section-title">
-							内置服务商 <em className="section-hint">只需填入 API 密钥</em>
+							{t("builtinProviders")}{" "}
+							<em className="section-hint">{t("hintKeyOnly")}</em>
 						</div>
 						<div className="provider-list">
 							{providerStatus.length === 0 && (
-								<div className="dd-loading">加载中…</div>
+								<div className="dd-loading">{t("loading")}</div>
 							)}
 							{providerStatus.map((p) => (
 								<div className="provider-row" key={p.id}>
@@ -185,7 +191,9 @@ export function ModelConfigModal({
 										<span className="provider-sub">
 											{p.id}
 											{p.configured && (
-												<span className="auth-badge">✓ 已配置</span>
+												<span className="auth-badge">
+													{t("configuredBadge")}
+												</span>
 											)}
 											{p.source && !p.configured && (
 												<span className="auth-badge dim">{p.source}</span>
@@ -194,13 +202,13 @@ export function ModelConfigModal({
 									</div>
 									<div className="provider-actions">
 										{p.configured ? (
-											<span className="auth-badge">密钥已就绪</span>
+											<span className="auth-badge">{t("keyReady")}</span>
 										) : (
 											<>
 												<input
 													type="password"
 													className="key-input"
-													placeholder="粘贴 API 密钥…"
+													placeholder={t("pasteKey")}
 													value={keys[p.id] ?? ""}
 													onChange={(e) =>
 														setKeys((k) => ({ ...k, [p.id]: e.target.value }))
@@ -214,7 +222,8 @@ export function ModelConfigModal({
 													}
 													onClick={() => saveBuiltinKey(p)}
 												>
-													<FiKey /> {savingKey === p.id ? "保存中" : "保存密钥"}
+													<FiKey />{" "}
+													{savingKey === p.id ? t("savingKey") : t("saveKey")}
 												</button>
 											</>
 										)}
@@ -223,13 +232,10 @@ export function ModelConfigModal({
 							))}
 						</div>
 
-						<div className="form-section-title">自定义服务商</div>
-						<p className="modal-desc">
-							用于 Ollama / vLLM / 兼容 OpenAI 的代理等，写入 pi 的{" "}
-							<code>models.json</code>，保存后热重载、立即生效。
-						</p>
+						<div className="form-section-title">{t("customProviders")}</div>
+						<p className="modal-desc">{t("customDesc")}</p>
 						{providers.length === 0 && (
-							<div className="dd-loading">还没有自定义服务商</div>
+							<div className="dd-loading">{t("noCustomProviders")}</div>
 						)}
 						<div className="provider-list">
 							{providers.map((p) => (
@@ -239,14 +245,15 @@ export function ModelConfigModal({
 										<span className="provider-sub">
 											{p.api ?? "—"}
 											{p.baseUrl ? ` · ${p.baseUrl}` : ""}
-											{p.models.length > 0 && ` · ${p.models.length} 个模型`}
+											{p.models.length > 0 &&
+												` · ${t("modelsCount", { n: p.models.length })}`}
 										</span>
 									</div>
 									<div className="provider-actions">
 										<button
 											type="button"
 											className="iconbtn"
-											title="编辑"
+											title={t("edit")}
 											onClick={() => setEditing(toDraft(p))}
 										>
 											<FiEdit2 />
@@ -254,7 +261,7 @@ export function ModelConfigModal({
 										<button
 											type="button"
 											className="iconbtn danger"
-											title="删除"
+											title={t("delete")}
 											onClick={() => removeProvider(p)}
 										>
 											<FiTrash2 />
@@ -269,7 +276,7 @@ export function ModelConfigModal({
 								className="btn primary"
 								onClick={() => setEditing(emptyDraft())}
 							>
-								<FiPlus /> 新增服务商
+								<FiPlus /> {t("addProvider")}
 							</button>
 						</div>
 					</>
@@ -278,7 +285,7 @@ export function ModelConfigModal({
 						<div className="form-grid">
 							<label className="field">
 								<span className="field-label">
-									服务商 ID <em>（必填，如 ollama / my-proxy）</em>
+									{t("providerId")} <em>{t("providerIdHint")}</em>
 								</span>
 								<input
 									type="text"
@@ -293,18 +300,18 @@ export function ModelConfigModal({
 								/>
 							</label>
 							<label className="field">
-								<span className="field-label">显示名</span>
+								<span className="field-label">{t("displayName")}</span>
 								<input
 									type="text"
 									value={editing.name}
 									onChange={(e) =>
 										setEditing({ ...editing, name: e.target.value })
 									}
-									placeholder="我的代理"
+									placeholder={t("displayNamePh")}
 								/>
 							</label>
 							<label className="field">
-								<span className="field-label">API 类型</span>
+								<span className="field-label">{t("apiType")}</span>
 								<select
 									value={editing.api}
 									onChange={(e) =>
@@ -320,7 +327,7 @@ export function ModelConfigModal({
 							</label>
 							<label className="field">
 								<span className="field-label">
-									baseUrl <em>（OpenAI 兼容端点）</em>
+									baseUrl <em>{t("baseUrlHint")}</em>
 								</span>
 								<input
 									type="text"
@@ -332,14 +339,14 @@ export function ModelConfigModal({
 								/>
 							</label>
 							<label className="field">
-								<span className="field-label">API 密钥</span>
+								<span className="field-label">{t("apiKey")}</span>
 								<input
 									type="password"
 									value={editing.apiKey}
 									onChange={(e) =>
 										setEditing({ ...editing, apiKey: e.target.value })
 									}
-									placeholder="sk-…（可留空，用 auth.json 的密钥）"
+									placeholder={t("apiKeyHint")}
 								/>
 							</label>
 							<label className="field check">
@@ -350,24 +357,24 @@ export function ModelConfigModal({
 										setEditing({ ...editing, authHeader: e.target.checked })
 									}
 								/>
-								<span>自动添加 Authorization 请求头</span>
+								<span>{t("authHeader")}</span>
 							</label>
 						</div>
 
-						<div className="form-section-title">模型</div>
+						<div className="form-section-title">{t("modelsTitle")}</div>
 						{editing.models.map((m, i) => (
 							<div className="model-row" key={i}>
 								<input
 									type="text"
 									value={m.id}
 									onChange={(e) => setModel(i, { id: e.target.value })}
-									placeholder="模型 ID（必填）"
+									placeholder={t("modelIdReq")}
 								/>
 								<input
 									type="text"
 									value={m.name}
 									onChange={(e) => setModel(i, { name: e.target.value })}
-									placeholder="显示名"
+									placeholder={t("displayName")}
 								/>
 								<select
 									value={m.input}
@@ -377,8 +384,8 @@ export function ModelConfigModal({
 										})
 									}
 								>
-									<option value="text">文本</option>
-									<option value="text-image">文本+图片</option>
+									<option value="text">{t("text")}</option>
+									<option value="text-image">{t("textImage")}</option>
 								</select>
 								<label className="check">
 									<input
@@ -388,7 +395,7 @@ export function ModelConfigModal({
 											setModel(i, { reasoning: e.target.checked })
 										}
 									/>
-									<span>推理</span>
+									<span>{t("reasoning")}</span>
 								</label>
 								<input
 									type="number"
@@ -396,20 +403,20 @@ export function ModelConfigModal({
 									onChange={(e) =>
 										setModel(i, { contextWindow: e.target.value })
 									}
-									placeholder="上下文"
+									placeholder={t("contextWindow")}
 									title="contextWindow"
 								/>
 								<input
 									type="number"
 									value={m.maxTokens}
 									onChange={(e) => setModel(i, { maxTokens: e.target.value })}
-									placeholder="最大输出"
+									placeholder={t("maxOutput")}
 									title="maxTokens"
 								/>
 								<button
 									type="button"
 									className="iconbtn danger"
-									title="移除模型"
+									title={t("removeModel")}
 									onClick={() =>
 										setEditing({
 											...editing,
@@ -431,7 +438,7 @@ export function ModelConfigModal({
 								})
 							}
 						>
-							<FiPlus /> 添加模型
+							<FiPlus /> {t("addModel")}
 						</button>
 
 						<div className="modal-actions">
@@ -440,7 +447,7 @@ export function ModelConfigModal({
 								className="btn"
 								onClick={() => setEditing(null)}
 							>
-								取消
+								{t("cancel")}
 							</button>
 							<button
 								type="button"
@@ -451,7 +458,7 @@ export function ModelConfigModal({
 								}
 								onClick={save}
 							>
-								保存
+								{t("save")}
 							</button>
 						</div>
 					</div>

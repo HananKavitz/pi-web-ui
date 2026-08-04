@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FiFile, FiFolder } from "react-icons/fi";
 import type { ChatState } from "../use-chat";
+import { useT } from "../i18n";
 
 interface FooterBarProps {
 	chat: ChatState;
@@ -16,6 +17,7 @@ interface FooterBarProps {
  * workspace path — click the path to switch directories (with completion).
  */
 export function FooterBar({ chat, send }: FooterBarProps) {
+	const t = useT();
 	const state = chat.state;
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState("");
@@ -47,7 +49,7 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 	const s = state.stats;
 
 	const connClass = chat.ready ? "ok" : "busy";
-	const connLabel = chat.ready ? "已连接" : "连接中…";
+	const connLabel = chat.ready ? t("connected") : t("connecting");
 
 	const context = s.contextUsage;
 	const ctxText =
@@ -83,7 +85,8 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 
 	const commit = (path: string) => {
 		const trimmed = path.trim();
-		if (trimmed && trimmed !== state.cwd) send({ type: "set_cwd", path: trimmed });
+		if (trimmed && trimmed !== state.cwd)
+			send({ type: "set_cwd", path: trimmed });
 		setEditing(false);
 	};
 
@@ -131,8 +134,8 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 			<span className="status-item">{connLabel}</span>
 			<span className="status-sep">·</span>
 
-			<span className="status-item" title="上下文用量">
-				上下文
+			<span className="status-item" title={t("contextUsage")}>
+				{t("context")}
 				<span className={`ctx-bar ${ctxBarClass}`}>
 					{ctxPercent !== null && (
 						<span
@@ -145,19 +148,19 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 			</span>
 			<span className="status-sep">·</span>
 
-			<span className="status-item" title="累计成本">
+			<span className="status-item" title={t("cumulativeCost")}>
 				${formatCost(s.cost)}
 			</span>
 			<span className="status-sep">·</span>
 
-			<span className="status-item" title="会话消息数">
-				消息 {s.totalMessages}
+			<span className="status-item" title={t("sessionMessages")}>
+				{t("messages")} {s.totalMessages}
 			</span>
 
 			{chat.statuses.length > 0 && (
 				<>
 					<span className="status-sep">·</span>
-					<span className="status-item ext-status" title="插件状态">
+					<span className="status-item ext-status" title={t("pluginStatus")}>
 						{chat.statuses.map((st) => st.text).join(" · ")}
 					</span>
 				</>
@@ -168,9 +171,11 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 					<span className="status-sep">·</span>
 					<span className="status-item working">
 						<span className="working-spin" />
-						工作中
+						{t("working")}
 						{queueTotal > 0 && (
-							<span className="status-queue">⏳ {queueTotal} 排队</span>
+							<span className="status-queue">
+								⏳ {queueTotal} {t("queued")}
+							</span>
 						)}
 					</span>
 				</>
@@ -183,7 +188,7 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 						className="status-cwd-input"
 						value={draft}
 						autoFocus
-						placeholder="输入路径，Enter 切换"
+						placeholder={t("enterPath")}
 						onChange={(e) => setDraft(e.target.value)}
 						onKeyDown={onKeyDown}
 						onBlur={() => setEditing(false)}
@@ -219,7 +224,7 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 				<button
 					type="button"
 					className="status-item status-cwd"
-					title={`工作目录：${state.cwd}（点击切换）`}
+					title={t("cwdTip", { path: state.cwd })}
 					onClick={startEdit}
 				>
 					📁 {state.cwd}

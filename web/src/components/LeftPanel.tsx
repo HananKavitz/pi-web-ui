@@ -1,6 +1,7 @@
 import { FiMessageSquare, FiSquare } from "react-icons/fi";
 import type { SessionSummary } from "../types";
 import type { ChatState } from "../use-chat";
+import { useT } from "../i18n";
 
 interface LeftPanelProps {
 	chat: ChatState;
@@ -23,22 +24,23 @@ function formatModified(ts: number): string {
 }
 
 export function LeftPanel({ chat, send }: LeftPanelProps) {
+	const t = useT();
 	const currentFile = chat.state?.sessionFile;
 	const sessions = chat.sessions;
 
 	const displayName = (s: SessionSummary): string => {
 		const title = s.name || s.firstMessage.trim();
-		return title.length > 0 ? title : "空对话";
+		return title.length > 0 ? title : t("emptyChat");
 	};
 
 	return (
 		<aside className="panel panel-left">
 			<div className="panel-header">
-				<span className="panel-title">对话</span>
+				<span className="panel-title">{t("chat")}</span>
 				<button
 					type="button"
 					className="panel-new"
-					title="新建对话"
+					title={t("newChat")}
 					onClick={() => send({ type: "new_chat" })}
 				>
 					<FiSquare />
@@ -46,7 +48,7 @@ export function LeftPanel({ chat, send }: LeftPanelProps) {
 			</div>
 			<div className="panel-body">
 				{sessions.length === 0 && (
-					<div className="panel-empty">还没有历史对话</div>
+					<div className="panel-empty">{t("noHistory")}</div>
 				)}
 				{sessions.map((s) => {
 					const active = currentFile === s.path;
@@ -64,12 +66,11 @@ export function LeftPanel({ chat, send }: LeftPanelProps) {
 							<span className="session-info">
 								<span className="session-title">{displayName(s)}</span>
 								<span className="session-sub">
-									{active ? "当前" : `${s.messageCount} 条消息`}
+									{active
+										? t("current")
+										: t("messageCount", { n: s.messageCount })}
 									{s.source === "tui" && (
-										<span
-											className="session-src"
-											title="pi 终端（TUI）中的对话"
-										>
+										<span className="session-src" title={t("tuiTip")}>
 											TUI
 										</span>
 									)}
@@ -86,7 +87,7 @@ export function LeftPanel({ chat, send }: LeftPanelProps) {
 					className="panel-refresh"
 					onClick={() => send({ type: "list_sessions" })}
 				>
-					刷新列表
+					{t("refreshList")}
 				</button>
 			</div>
 		</aside>

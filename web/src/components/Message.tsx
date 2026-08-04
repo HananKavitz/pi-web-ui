@@ -12,6 +12,7 @@ import type {
 import { Markdown } from "./Markdown";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { ToolCallBlock, type ToolView } from "./ToolCallBlock";
+import { useT, type Translate } from "../i18n";
 
 // ---------------------------------------------------------------------------
 // Narrowing guards. UiContentBlock is an open union (its last member is
@@ -72,6 +73,7 @@ export const Message = memo(function Message({
 	streaming,
 	isLast,
 }: MessageProps) {
+	const t = useT();
 	// toolResult content is rendered inside its toolCall card — never standalone
 	// (otherwise the same output shows twice: formatted card + plain text).
 	if (message.role === "toolResult") return null;
@@ -89,9 +91,9 @@ export const Message = memo(function Message({
 				<span className="msg-role">
 					{message.role === "custom"
 						? message.customType === "file"
-							? "附件"
-							: `插件 · ${message.customType ?? "未知"}`
-						: roleLabel(message.role)}
+							? t("attachment")
+							: `${t("plugin")} · ${message.customType ?? t("unknown")}`
+						: roleLabel(message.role, t)}
 				</span>
 				{message.model && <span className="msg-model">{message.model}</span>}
 				{message.timestamp && (
@@ -118,7 +120,7 @@ export const Message = memo(function Message({
 				)}
 				{isEmptyStreaming && (
 					<div className="thinking-wait">
-						正在思考
+						{t("thinkingWait")}
 						<span className="dot" />
 					</div>
 				)}
@@ -132,6 +134,7 @@ export const Message = memo(function Message({
 
 /** Collapsible card for an attached file (customType "file"). */
 function AttachmentCard({ message }: { message: UiMessage }) {
+	const t = useT();
 	const [open, setOpen] = useState(false);
 	const details = (message.details ?? {}) as {
 		name?: string;
@@ -141,7 +144,7 @@ function AttachmentCard({ message }: { message: UiMessage }) {
 		lines?: number;
 		type?: "folder";
 	};
-	const name = details.name ?? details.path ?? "附件";
+	const name = details.name ?? details.path ?? t("attachment");
 	const isFolder = details.type === "folder";
 	const isReference = details.mode === "reference";
 
@@ -170,11 +173,11 @@ function AttachmentCard({ message }: { message: UiMessage }) {
 				<span className={`attachcard-mode ${isReference ? "ref" : "inline"}`}>
 					{isReference
 						? isFolder
-							? "文件夹 · 仅引用"
-							: `仅引用 · ${formatSize(details.size)}`
+							? t("folderRefShort")
+							: `${t("refOnlyShort")} · ${formatSize(details.size)}`
 						: image
-							? "🖼 图片"
-							: `内联 · ${details.lines ?? lines} 行`}
+							? t("image")
+							: t("inlineLines", { n: details.lines ?? lines })}
 				</span>
 				{!isReference && (open ? <FiChevronDown /> : <FiChevronRight />)}
 			</button>
@@ -190,8 +193,8 @@ function AttachmentCard({ message }: { message: UiMessage }) {
 			{isReference && (
 				<div className="attachcard-refnote">
 					{isFolder
-						? "文件夹，未展开内容 —— 智能体会按需浏览目录"
-						: `文件较大（${formatSize(details.size)}），未展开内容 —— 智能体会按需读取`}
+						? t("folderNotExpanded")
+						: t("fileNotExpanded", { size: formatSize(details.size) })}
 				</div>
 			)}
 		</div>
@@ -226,14 +229,13 @@ function Block({
 	streaming: boolean;
 	isLast: boolean;
 }) {
+	const t = useT();
 	const text = asText(block);
 	if (text) {
 		return (
 			<div className="msg-text">
 				<Markdown text={text.text} />
-				{text.truncated && (
-					<div className="trunc-note">… 内容过长，当前视图已截断</div>
-				)}
+				{text.truncated && <div className="trunc-note">{t("truncated")}</div>}
 			</div>
 		);
 	}
@@ -276,14 +278,16 @@ function Block({
 						<span
 							className={`bashblock-exit ${bash.exitCode === 0 ? "ok" : "err"}`}
 						>
-							退出码 {bash.exitCode}
+							{t("exitCode", { code: bash.exitCode })}
 						</span>
 					)}
-					{bash.cancelled && <span className="bashblock-exit err">已取消</span>}
+					{bash.cancelled && (
+						<span className="bashblock-exit err">{t("cancelled")}</span>
+					)}
 				</div>
 				{bash.output && <pre className="bashblock-output">{bash.output}</pre>}
 				{bash.truncated && (
-					<div className="trunc-note">… 输出过长，当前视图已截断</div>
+					<div className="trunc-note">{t("outputTruncated")}</div>
 				)}
 			</div>
 		);
@@ -292,20 +296,20 @@ function Block({
 	return null;
 }
 
-function roleLabel(role: string): string {
+function roleLabel(role: string, t: Translate): string {
 	switch (role) {
 		case "user":
-			return "你";
+			return t("role.user");
 		case "assistant":
-			return "pi";
+			return t("role.assistant");
 		case "toolResult":
-			return "工具";
+			return t("role.tool");
 		case "bashExecution":
-			return "终端";
+			return t("role.bash");
 		case "branchSummary":
-			return "分支摘要";
+			return t("role.branch");
 		case "compactionSummary":
-			return "上下文已压缩";
+			return t("role.compaction");
 		default:
 			return role;
 	}

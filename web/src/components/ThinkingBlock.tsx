@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { FiChevronDown, FiChevronRight, FiCpu } from "react-icons/fi";
+import { useT } from "../i18n";
 
 interface ThinkingBlockProps {
 	thinking: string;
@@ -8,6 +9,7 @@ interface ThinkingBlockProps {
 }
 
 export function ThinkingBlock({ thinking, streaming }: ThinkingBlockProps) {
+	const t = useT();
 	// While streaming, start expanded so the reasoning is visible as it arrives;
 	// finished messages default to collapsed (tidy summary header).
 	const [open, setOpen] = useState(streaming);
@@ -27,13 +29,13 @@ export function ThinkingBlock({ thinking, streaming }: ThinkingBlockProps) {
 				<span className="thinking-label">
 					{streaming ? (
 						<span className="thinking-live-label">
-							思考中
+							{t("thinkingNow")}
 							<span className="dots" />
 						</span>
 					) : open ? (
-						"思考"
+						t("thinking")
 					) : (
-						`思考：${preview}`
+						t("thinkingPreview", { preview })
 					)}
 				</span>
 			</button>

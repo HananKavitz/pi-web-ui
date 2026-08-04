@@ -1,5 +1,6 @@
 import { FiVolume2 } from "react-icons/fi";
 import type { SoundKind, SoundSettings } from "../sounds";
+import { useT } from "../i18n";
 
 interface SoundSettingsProps {
 	settings: SoundSettings;
@@ -8,11 +9,23 @@ interface SoundSettingsProps {
 	onPreview: (kind: SoundKind) => void;
 }
 
-const EVENT_LABELS: { kind: SoundKind; label: string; desc: string }[] = [
-	{ kind: "question", label: "问卷弹出", desc: "ask_user_question 出现时" },
-	{ kind: "done", label: "回复结束", desc: "智能体完成一轮回答时" },
-	{ kind: "start", label: "回复开始", desc: "智能体开始新一轮时" },
-	{ kind: "error", label: "出错", desc: "出现错误提示时" },
+const SOUND_EVENTS: {
+	kind: SoundKind;
+	labelKey: "sound.question" | "sound.done" | "sound.start" | "sound.error";
+	descKey:
+		| "sound.question.desc"
+		| "sound.done.desc"
+		| "sound.start.desc"
+		| "sound.error.desc";
+}[] = [
+	{
+		kind: "question",
+		labelKey: "sound.question",
+		descKey: "sound.question.desc",
+	},
+	{ kind: "done", labelKey: "sound.done", descKey: "sound.done.desc" },
+	{ kind: "start", labelKey: "sound.start", descKey: "sound.start.desc" },
+	{ kind: "error", labelKey: "sound.error", descKey: "sound.error.desc" },
 ];
 
 export function SoundSettingsPanel({
@@ -20,17 +33,18 @@ export function SoundSettingsPanel({
 	onChange,
 	onPreview,
 }: SoundSettingsProps) {
+	const t = useT();
 	const toggle = (patch: Partial<SoundSettings>) =>
 		onChange({ ...settings, ...patch });
 
 	return (
 		<div className="sound-menu">
-			<div className="dd-header">声音提示</div>
+			<div className="dd-header">{t("soundHeader")}</div>
 
 			<label className="sound-row sound-master">
 				<span className="sound-label">
 					<FiVolume2 className="sound-icon" />
-					<span>启用声音</span>
+					<span>{t("enableSound")}</span>
 				</span>
 				<input
 					type="checkbox"
@@ -39,27 +53,27 @@ export function SoundSettingsPanel({
 				/>
 			</label>
 
-			{EVENT_LABELS.map(({ kind, label, desc }) => (
+			{SOUND_EVENTS.map(({ kind, labelKey, descKey }) => (
 				<label
 					key={kind}
 					className={`sound-row ${settings.enabled ? "" : "disabled"}`}
 				>
 					<span className="sound-label">
-						<span className="sound-name">{label}</span>
-						<span className="sound-desc">{desc}</span>
+						<span className="sound-name">{t(labelKey)}</span>
+						<span className="sound-desc">{t(descKey)}</span>
 					</span>
 					<span className="sound-right">
 						<button
 							type="button"
 							className="sound-preview"
-							title="试听"
+							title={t("preview")}
 							disabled={!settings.enabled}
 							onClick={(e) => {
 								e.preventDefault();
 								onPreview(kind);
 							}}
 						>
-							试听
+							{t("preview")}
 						</button>
 						<input
 							type="checkbox"
@@ -72,7 +86,7 @@ export function SoundSettingsPanel({
 			))}
 
 			<div className={`sound-volume ${settings.enabled ? "" : "disabled"}`}>
-				<span className="sound-name">音量</span>
+				<span className="sound-name">{t("volume")}</span>
 				<input
 					type="range"
 					min={0}

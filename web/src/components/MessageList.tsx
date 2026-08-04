@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiArrowDown } from "react-icons/fi";
 import type { UiMessage, UiState } from "../types";
 import { Message } from "./Message";
+import { useT, type Translate } from "../i18n";
 
 /** Stable shared empty map — passing this (instead of a fresh Map) lets
  *  React.memo skip messages that have no live tool output to show. */
@@ -12,28 +13,25 @@ function hasToolCall(m: UiMessage): boolean {
 }
 
 /** Suggested prompts shown on the empty-state welcome page. */
-const EXAMPLES: { icon: string; text: string; prompt: string }[] = [
-	{
-		icon: "🔍",
-		text: "了解这个项目",
-		prompt: "介绍一下这个项目：整体结构、主要模块和如何运行？",
-	},
-	{
-		icon: "🐛",
-		text: "排查一个问题",
-		prompt: "帮我排查一个 bug，请先说明问题现象，我会补充细节。",
-	},
-	{
-		icon: "🧪",
-		text: "编写测试",
-		prompt: "为项目的核心模块编写单元测试。",
-	},
-	{
-		icon: "🧹",
-		text: "代码审查",
-		prompt: "审查最近改动的代码，指出潜在问题和改进建议。",
-	},
+const EXAMPLE_DEFS: {
+	key: "ex.understand" | "ex.debug" | "ex.test" | "ex.review";
+	icon: string;
+}[] = [
+	{ key: "ex.understand", icon: "🔍" },
+	{ key: "ex.debug", icon: "🐛" },
+	{ key: "ex.test", icon: "🧪" },
+	{ key: "ex.review", icon: "🧹" },
 ];
+
+function examples(
+	t: Translate,
+): { icon: string; text: string; prompt: string }[] {
+	return EXAMPLE_DEFS.map(({ key, icon }) => ({
+		icon,
+		text: t(key),
+		prompt: t(`${key}.prompt`),
+	}));
+}
 
 interface MessageListProps {
 	state: UiState;
@@ -41,6 +39,7 @@ interface MessageListProps {
 }
 
 export function MessageList({ state, liveOutputs }: MessageListProps) {
+	const t = useT();
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [stickBottom, setStickBottom] = useState(true);
 	const stickRef = useRef(true);
@@ -93,19 +92,19 @@ export function MessageList({ state, liveOutputs }: MessageListProps) {
 						<div className="empty-logo-wrap">
 							<div className="empty-logo">π</div>
 						</div>
-						<h2 className="empty-title">pi 编码智能体</h2>
-						<p className="empty-sub">检查、编辑、运行 —— 随时待命</p>
+						<h2 className="empty-title">{t("welcomeTitle")}</h2>
+						<p className="empty-sub">{t("welcomeSub")}</p>
 						<div className="empty-cwd">
-							<span className="empty-cwd-label">目录</span>
+							<span className="empty-cwd-label">{t("directory")}</span>
 							<span className="empty-cwd-path">{state.cwd}</span>
 						</div>
 						<div className="empty-examples">
-							{EXAMPLES.map((ex) => (
+							{examples(t).map((ex) => (
 								<button
 									type="button"
 									key={ex.prompt}
 									className="empty-example"
-									title="点击填入输入框"
+									title={t("clickToFill")}
 									onClick={() =>
 										window.dispatchEvent(
 											new CustomEvent("pi-web:fill", { detail: ex.prompt }),
@@ -142,7 +141,7 @@ export function MessageList({ state, liveOutputs }: MessageListProps) {
 					/>
 				)}
 				{state.isStreaming && messages.length === 0 && (
-					<div className="streaming-wait">正在等待模型响应…</div>
+					<div className="streaming-wait">{t("waitingResponse")}</div>
 				)}
 			</div>
 			{!stickBottom && (
@@ -151,7 +150,7 @@ export function MessageList({ state, liveOutputs }: MessageListProps) {
 					className="scroll-bottom"
 					onClick={scrollToBottom}
 				>
-					<FiArrowDown /> 回到底部
+					<FiArrowDown /> {t("backToBottom")}
 				</button>
 			)}
 		</div>

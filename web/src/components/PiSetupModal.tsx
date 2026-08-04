@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { FiCpu, FiRefreshCw, FiX } from "react-icons/fi";
 import type { ClientMessage, ProviderStatus } from "../types";
+import { useT } from "../i18n";
 
 interface PiSetupModalProps {
 	send: (msg: ClientMessage) => boolean;
@@ -26,6 +27,7 @@ export function PiSetupModal({
 	installResult,
 	onClose,
 }: PiSetupModalProps) {
+	const t = useT();
 	const [installing, setInstalling] = useState(false);
 	const [provider, setProvider] = useState("");
 	const [apiKey, setApiKey] = useState("");
@@ -86,25 +88,20 @@ export function PiSetupModal({
 				<button
 					type="button"
 					className="modal-close"
-					aria-label="关闭"
+					aria-label={t("close")}
 					onClick={onClose}
 				>
 					<FiX />
 				</button>
 				<div className="modal-head">
 					<FiCpu className="modal-head-icon" />
-					<h2>未检测到 pi agent 配置</h2>
+					<h2>{t("setupTitle")}</h2>
 				</div>
-				<p className="modal-desc">
-					pi-web-ui 需要 pi 的配置目录（
-					<code>~/.pi/agent</code>）和至少一个 API 密钥才能运行智能体。pi 内置了
-					openai、anthropic、deepseek 等服务商
-					——选一个填密钥即可，全程无需打开终端。
-				</p>
+				<p className="modal-desc">{t("setupDesc")}</p>
 
 				{installFailed ? (
 					<div className="setup-failed">
-						<div className="setup-done">✖ pi agent 安装失败：</div>
+						<div className="setup-done">{t("installFailed")}</div>
 						<pre className="setup-detail">{installResult.detail}</pre>
 						<div className="setup-actions">
 							<button
@@ -113,39 +110,38 @@ export function PiSetupModal({
 								disabled={installing}
 								onClick={doInstall}
 							>
-								重试安装
+								{t("retryInstall")}
 							</button>
 							<button type="button" className="btn" onClick={onClose}>
-								跳过
+								{t("skip")}
 							</button>
 						</div>
 					</div>
 				) : installResult?.ok ? (
 					<div className="setup-key-form">
-						<div className="setup-done">
-							✅ pi agent CLI 已安装。选择服务商并填入 API 密钥即可开始对话：
-						</div>
+						<div className="setup-done">{t("installDone")}</div>
 						<label className="field">
-							<span className="field-label">服务商</span>
+							<span className="field-label">{t("provider")}</span>
 							<select
 								value={provider}
 								onChange={(e) => setProvider(e.target.value)}
 							>
-								{providers.length === 0 && <option value="">加载中…</option>}
+								{providers.length === 0 && (
+									<option value="">{t("loading")}</option>
+								)}
 								{providers.map((p) => (
 									<option key={p.id} value={p.id}>
-										{p.name}（{p.id}）{p.configured ? " · 已配置" : ""}
+										{p.name}（{p.id}）
+										{p.configured ? ` · ${t("configured")}` : ""}
 									</option>
 								))}
 							</select>
 							{selected?.configured && (
-								<div className="field-hint">
-									该服务商已配置密钥，可直接使用或更换新密钥。
-								</div>
+								<div className="field-hint">{t("providerKeyReady")}</div>
 							)}
 						</label>
 						<label className="field">
-							<span className="field-label">API 密钥</span>
+							<span className="field-label">{t("apiKey")}</span>
 							<input
 								type="password"
 								value={apiKey}
@@ -160,10 +156,10 @@ export function PiSetupModal({
 								disabled={!apiKey.trim() || saving || !provider}
 								onClick={saveKey}
 							>
-								{saving ? "保存中…" : "保存并开始使用"}
+								{saving ? t("saving") : t("saveAndStart")}
 							</button>
 							<button type="button" className="btn" onClick={recheck}>
-								<FiRefreshCw /> 重新检测
+								<FiRefreshCw /> {t("recheck")}
 							</button>
 						</div>
 					</div>
@@ -175,10 +171,10 @@ export function PiSetupModal({
 							disabled={installing}
 							onClick={doInstall}
 						>
-							{installing ? "正在安装 pi agent CLI…" : "自动安装 pi agent"}
+							{installing ? t("installing") : t("autoInstall")}
 						</button>
 						<button type="button" className="btn" onClick={onClose}>
-							跳过
+							{t("skip")}
 						</button>
 					</div>
 				)}

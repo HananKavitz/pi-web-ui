@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { FiSend, FiSquare } from "react-icons/fi";
 import type { ChatState } from "../use-chat";
 import type { ClientMessage } from "../types";
+import { useT } from "../i18n";
 
 interface ChatInputProps {
 	chat: ChatState;
@@ -25,6 +26,7 @@ export function ChatInput({
 	onRemoveAttachment,
 	onSent,
 }: ChatInputProps) {
+	const t = useT();
 	const [text, setText] = useState("");
 	const taRef = useRef<HTMLTextAreaElement>(null);
 
@@ -88,33 +90,33 @@ export function ChatInput({
 							className={`attach-chip ${a.mode}`}
 							title={
 								a.isDir
-									? `文件夹引用：${a.path}`
+									? t("folderRef", { path: a.path })
 									: a.mode === "reference"
-										? `仅引用：${a.path}`
-										: `附加内容：${a.path}`
+										? t("refOnly", { path: a.path })
+										: t("attachContent", { path: a.path })
 							}
 						>
 							{a.isDir ? "📁" : a.mode === "reference" ? "🔗" : "📎"} {a.name}
 							<button
 								type="button"
 								className="attach-remove"
-								title="移除附件"
+								title={t("removeAttachment")}
 								onClick={() => onRemoveAttachment(a.path)}
 							>
 								×
 							</button>
 						</span>
 					))}
-					<span className="attach-hint">将随下一条消息发送</span>
+					<span className="attach-hint">{t("attachHint")}</span>
 				</div>
 			)}
 			{streaming && queueTotal > 0 && state && (
 				<div className="queue-hint">
 					{state.queue.followUp > 0 && (
-						<span>⏳ {state.queue.followUp} 条跟进消息排队中</span>
+						<span>{t("followUpQueued", { n: state.queue.followUp })}</span>
 					)}
 					{state.queue.steering > 0 && (
-						<span>⏳ {state.queue.steering} 条转向消息排队中</span>
+						<span>{t("steeringQueued", { n: state.queue.steering })}</span>
 					)}
 				</div>
 			)}
@@ -126,9 +128,9 @@ export function ChatInput({
 					placeholder={
 						connected
 							? streaming
-								? "智能体正在工作中…（消息可排队发送）"
-								: "给 pi 发送消息 — Enter 发送，Shift+Enter 换行"
-							: "正在连接服务器…"
+								? t("placeholderStreaming")
+								: t("placeholderIdle")
+							: t("placeholderConnecting")
 					}
 					disabled={!connected}
 					onChange={(e) => setText(e.target.value)}
@@ -139,16 +141,16 @@ export function ChatInput({
 						<button
 							type="button"
 							className="btn stop"
-							title="停止智能体"
+							title={t("stopAgent")}
 							onClick={() => send({ type: "abort" })}
 						>
-							<FiSquare /> 停止
+							<FiSquare /> {t("stop")}
 						</button>
 					) : (
 						<button
 							type="button"
 							className="btn send"
-							title="发送（Enter）"
+							title={t("sendTip")}
 							disabled={!connected || !text.trim()}
 							onClick={submit}
 						>

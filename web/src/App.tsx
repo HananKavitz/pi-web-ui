@@ -10,6 +10,7 @@ import { TerminalPanel } from "./components/TerminalPanel";
 import { PiSetupModal } from "./components/PiSetupModal";
 import { ModelConfigModal } from "./components/ModelConfigModal";
 import { useChat } from "./use-chat";
+import { useT } from "./i18n";
 import {
 	loadSoundSettings,
 	playSound,
@@ -27,6 +28,7 @@ export interface PendingAttachment {
 }
 
 export function App() {
+	const t = useT();
 	const { chat, send, dismissNotice, terminal } = useChat();
 	const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
 	const [view, setView] = useState<"chat" | "terminal">("chat");
@@ -120,7 +122,7 @@ export function App() {
 							<MessageList state={chat.state} liveOutputs={chat.liveOutputs} />
 						) : (
 							<div className="boot-wait">
-								{chat.ready ? "正在加载会话…" : "正在连接 pi-web-ui 服务器…"}
+								{chat.ready ? t("loadingSession") : t("connectingServer")}
 							</div>
 						)}
 						<ChatInput

@@ -8,6 +8,7 @@ import {
 	FiRefreshCw,
 } from "react-icons/fi";
 import type { ChatState } from "../use-chat";
+import { useT } from "../i18n";
 
 type AttachMode = "inline" | "reference";
 
@@ -24,6 +25,7 @@ interface RightPanelProps {
 }
 
 export function RightPanel({ chat, send, onAttach }: RightPanelProps) {
+	const t = useT();
 	const [currentPath, setCurrentPath] = useState<string>("");
 	const [loading, setLoading] = useState(false);
 	const files = chat.files;
@@ -70,11 +72,11 @@ export function RightPanel({ chat, send, onAttach }: RightPanelProps) {
 	return (
 		<aside className="panel panel-right">
 			<div className="panel-header">
-				<span className="panel-title">文件</span>
+				<span className="panel-title">{t("files")}</span>
 				<button
 					type="button"
 					className="panel-refresh"
-					title="刷新文件列表"
+					title={t("refreshFiles")}
 					onClick={() => request(currentPath)}
 				>
 					<FiRefreshCw />
@@ -86,7 +88,7 @@ export function RightPanel({ chat, send, onAttach }: RightPanelProps) {
 					className={`crumb ${currentPath === "" ? "active" : ""}`}
 					onClick={() => request("")}
 				>
-					根目录
+					{t("rootDir")}
 				</button>
 				{crumbs.map((c, i) => {
 					const path = crumbs.slice(0, i + 1).join("/");
@@ -105,7 +107,7 @@ export function RightPanel({ chat, send, onAttach }: RightPanelProps) {
 				})}
 			</div>
 			<div className="panel-body">
-				{loading && <div className="panel-empty">加载中…</div>}
+				{loading && <div className="panel-empty">{t("loading")}</div>}
 				{!loading && files && files.path === currentPath && (
 					<>
 						{files.path !== "" && (
@@ -128,7 +130,7 @@ export function RightPanel({ chat, send, onAttach }: RightPanelProps) {
 									<button
 										type="button"
 										className="file-attach ref"
-										data-tip="链接文件夹路径到对话"
+										data-tip={t("linkFolderTip")}
 										onClick={() => onAttach(e.path, e.name, "reference", true)}
 									>
 										<FiLink />
@@ -143,7 +145,7 @@ export function RightPanel({ chat, send, onAttach }: RightPanelProps) {
 									<button
 										type="button"
 										className="file-attach inline"
-										data-tip="附加内容到对话"
+										data-tip={t("attachInlineTip")}
 										onClick={() => onAttach(e.path, e.name, "inline")}
 									>
 										<FiPlus />
@@ -151,7 +153,7 @@ export function RightPanel({ chat, send, onAttach }: RightPanelProps) {
 									<button
 										type="button"
 										className="file-attach ref"
-										data-tip="仅引用路径（AI 按需读取）"
+										data-tip={t("referenceTip")}
 										onClick={() => onAttach(e.path, e.name, "reference")}
 									>
 										<FiLink />
@@ -161,7 +163,9 @@ export function RightPanel({ chat, send, onAttach }: RightPanelProps) {
 						)}
 					</>
 				)}
-				{!loading && !files && <div className="panel-empty">暂无文件</div>}
+				{!loading && !files && (
+					<div className="panel-empty">{t("noFiles")}</div>
+				)}
 			</div>
 			{chat.widgets.filter((w) => w.lines.length > 0).length > 0 && (
 				<div className="panel-widgets">

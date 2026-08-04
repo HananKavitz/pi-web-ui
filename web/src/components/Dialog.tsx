@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ClientMessage } from "../types";
+import { useT } from "../i18n";
 
 interface DialogProps {
 	dialog: {
@@ -16,6 +17,7 @@ interface DialogProps {
  * Resolves via dialog_response; cancel/Esc resolves with null.
  */
 export function Dialog({ dialog, send }: DialogProps) {
+	const t = useT();
 	const [inputValue, setInputValue] = useState("");
 	const [sel, setSel] = useState(0);
 
@@ -48,7 +50,7 @@ export function Dialog({ dialog, send }: DialogProps) {
 			}}
 		>
 			<div className="dialog">
-				<div className="dialog-title">{dialog.title || "插件请求"}</div>
+				<div className="dialog-title">{dialog.title || t("pluginRequest")}</div>
 
 				{dialog.kind === "select" && (
 					<div className="dialog-options">
@@ -64,7 +66,7 @@ export function Dialog({ dialog, send }: DialogProps) {
 							</button>
 						))}
 						{options.length === 0 && (
-							<div className="dialog-hint">（无选项）</div>
+							<div className="dialog-hint">{t("noOptions")}</div>
 						)}
 					</div>
 				)}
@@ -78,14 +80,14 @@ export function Dialog({ dialog, send }: DialogProps) {
 								className="btn"
 								onClick={() => respond(false)}
 							>
-								取消
+								{t("cancel")}
 							</button>
 							<button
 								type="button"
 								className="btn primary"
 								onClick={() => respond(true)}
 							>
-								确定
+								{t("ok")}
 							</button>
 						</div>
 					</div>
@@ -96,7 +98,7 @@ export function Dialog({ dialog, send }: DialogProps) {
 						<input
 							className="dialog-input"
 							value={inputValue}
-							placeholder={message || "输入内容"}
+							placeholder={message || t("inputPlaceholder")}
 							autoFocus
 							onChange={(e) => setInputValue(e.target.value)}
 							onKeyDown={(e) => {
@@ -111,14 +113,14 @@ export function Dialog({ dialog, send }: DialogProps) {
 								className="btn"
 								onClick={() => respond(null)}
 							>
-								取消
+								{t("cancel")}
 							</button>
 							<button
 								type="button"
 								className="btn primary"
 								onClick={() => respond(inputValue)}
 							>
-								确定
+								{t("ok")}
 							</button>
 						</div>
 					</div>

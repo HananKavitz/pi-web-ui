@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
 	FiCpu,
+	FiGlobe,
 	FiMessageSquare,
 	FiPlus,
 	FiTerminal,
@@ -11,6 +12,7 @@ import type { ChatState } from "../use-chat";
 import { Dropdown, DropdownItem } from "./Dropdown";
 import { SoundSettingsPanel } from "./SoundSettings";
 import type { SoundKind, SoundSettings } from "../sounds";
+import { useI18n, type Locale } from "../i18n";
 
 interface TopBarProps {
 	chat: ChatState;
@@ -32,19 +34,15 @@ interface TopBarProps {
 	onSoundPreview: (kind: SoundKind) => void;
 }
 
-const THINKING_LEVELS: { value: string; label: string }[] = [
-	{ value: "off", label: "关闭" },
-	{ value: "minimal", label: "极简" },
-	{ value: "low", label: "低" },
-	{ value: "medium", label: "中" },
-	{ value: "high", label: "高" },
-	{ value: "xhigh", label: "极高" },
-	{ value: "max", label: "最大" },
-];
-
-function thinkingLabel(level: string): string {
-	return THINKING_LEVELS.find((l) => l.value === level)?.label ?? level;
-}
+const THINKING_VALUES = [
+	"off",
+	"minimal",
+	"low",
+	"medium",
+	"high",
+	"xhigh",
+	"max",
+] as const;
 
 export function TopBar({
 	chat,
@@ -56,6 +54,7 @@ export function TopBar({
 	onSoundChange,
 	onSoundPreview,
 }: TopBarProps) {
+	const { locale, setLocale, t } = useI18n();
 	const state = chat.state;
 	const model = state?.model;
 	// snapshot model.id is the bare id; list ids are "provider/id".
@@ -63,8 +62,19 @@ export function TopBar({
 	const [modelOpen, setModelOpen] = useState(false);
 	const [thinkingOpen, setThinkingOpen] = useState(false);
 	const [soundOpen, setSoundOpen] = useState(false);
+	const [langOpen, setLangOpen] = useState(false);
 	// Local loading flag for the model dropdown (list arrives via chat.models).
 	const [modelsLoading, setModelsLoading] = useState(false);
+
+	const thinkingLevels: { value: string; label: string }[] =
+		THINKING_VALUES.map((v) => ({ value: v, label: t(`thinking.${v}`) }));
+	const thinkingLabel = (level: string): string =>
+		thinkingLevels.find((l) => l.value === level)?.label ?? level;
+
+	const LANGUAGES: { value: Locale; label: string }[] = [
+		{ value: "zh", label: t("langZh") },
+		{ value: "en", label: t("langEn") },
+	];
 
 	// Lazily fetch the model list when the dropdown opens for the first time.
 	useEffect(() => {
@@ -78,10 +88,10 @@ export function TopBar({
 	}, [chat.models.length]);
 
 	const connLabel = chat.ready
-		? "已连接"
+		? t("connected")
 		: chat.status === "closed"
-			? "重连中…"
-			: "连接中…";
+			? t("reconnecting")
+			: t("connecting");
 	const connClass = chat.ready ? "ok" : "busy";
 
 	return (
@@ -94,7 +104,11 @@ export function TopBar({
 			</div>
 
 			<div className="topbar-actions">
-				<div className="view-switch" role="tablist" aria-label="视图切换">
+				<div
+					className="view-switch"
+					role="tablist"
+					aria-label={t("viewSwitch")}
+				>
 					<button
 						type="button"
 						role="tab"
@@ -103,7 +117,7 @@ export function TopBar({
 						onClick={() => onViewChange("chat")}
 					>
 						<FiMessageSquare />
-						<span>对话</span>
+						<span>{t("chat")}</span>
 					</button>
 					<button
 						type="button"
@@ -113,7 +127,7 @@ export function TopBar({
 						onClick={() => onViewChange("terminal")}
 					>
 						<FiTerminal />
-						<span>终端</span>
+						<span>{t("terminal")}</span>
 					</button>
 				</div>
 				<Dropdown
@@ -121,7 +135,7 @@ export function TopBar({
 						<>
 							<FiCpu />
 							<span className="chip-model">
-								{model ? model.name : "选择模型"}
+								{model ? model.name : t("selectModel")}
 							</span>
 							{model && <span className="chip-sub">{model.provider}</span>}
 						</>
@@ -129,16 +143,14 @@ export function TopBar({
 					open={modelOpen}
 					onOpenChange={setModelOpen}
 				>
-					<div className="dd-header">可用模型</div>
+					<div className="dd-header">{t("availableModels")}</div>
 					{(modelsLoading || chat.modelsLoading) && (
-						<div className="dd-loading">加载中…</div>
+						<div className="dd-loading">{t("loading")}</div>
 					)}
 					{chat.models.length === 0 &&
 						!modelsLoading &&
 						!chat.modelsLoading && (
-							<div className="dd-loading">
-								暂无可用模型（请先配置 API 密钥）
-							</div>
+							<div className="dd-loading">{t("noModels")}</div>
 						)}
 					{chat.models.map((m) => (
 						<DropdownItem
@@ -154,7 +166,7 @@ export function TopBar({
 							<span className="dd-model-name">{m.name}</span>
 							<span className="dd-model-sub">
 								{m.provider}
-								{m.reasoning ? " · 推理" : ""}
+								{m.reasoning ? ` · ${t("reasoning")}` : ""}
 							</span>
 						</DropdownItem>
 					))}
@@ -163,7 +175,7 @@ export function TopBar({
 						className="dd-refresh"
 						onClick={() => send({ type: "list_models" })}
 					>
-						刷新模型列表
+						{t("refreshModels")}
 					</button>
 					<button
 						type="button"
@@ -173,7 +185,7 @@ export function TopBar({
 							onManageModels();
 						}}
 					>
-						⚙ 管理模型（新增 / 修改）
+						{t("manageModels")}
 					</button>
 				</Dropdown>
 
@@ -182,15 +194,17 @@ export function TopBar({
 						<>
 							<FiZap />
 							<span className="chip-sub">
-								思考：{state ? thinkingLabel(state.thinkingLevel) : "—"}
+								{t("thinkingChip", {
+									level: state ? thinkingLabel(state.thinkingLevel) : "—",
+								})}
 							</span>
 						</>
 					}
 					open={thinkingOpen}
 					onOpenChange={setThinkingOpen}
 				>
-					<div className="dd-header">思考强度</div>
-					{THINKING_LEVELS.map((l) => (
+					<div className="dd-header">{t("thinkingLevel")}</div>
+					{thinkingLevels.map((l) => (
 						<DropdownItem
 							key={l.value}
 							active={state?.thinkingLevel === l.value}
@@ -210,7 +224,7 @@ export function TopBar({
 					trigger={
 						<>
 							<FiVolume2 />
-							<span className="chip-sub">声音</span>
+							<span className="chip-sub">{t("sound")}</span>
 						</>
 					}
 					open={soundOpen}
@@ -223,14 +237,41 @@ export function TopBar({
 					/>
 				</Dropdown>
 
+				<Dropdown
+					trigger={
+						<>
+							<FiGlobe />
+							<span className="chip-sub">
+								{locale === "zh" ? t("langZh") : "EN"}
+							</span>
+						</>
+					}
+					open={langOpen}
+					onOpenChange={setLangOpen}
+				>
+					<div className="dd-header">{t("language")}</div>
+					{LANGUAGES.map((l) => (
+						<DropdownItem
+							key={l.value}
+							active={locale === l.value}
+							onClick={() => {
+								setLocale(l.value);
+								setLangOpen(false);
+							}}
+						>
+							{l.label}
+						</DropdownItem>
+					))}
+				</Dropdown>
+
 				<button
 					type="button"
 					className="chip newchat"
-					data-tip="新建对话（每个浏览器独立保存会话）"
+					data-tip={t("newChatTip")}
 					onClick={() => send({ type: "new_chat" })}
 				>
 					<FiPlus />
-					<span>新对话</span>
+					<span>{t("newChat")}</span>
 				</button>
 			</div>
 		</header>
