@@ -14,7 +14,8 @@
  */
 import { existsSync } from "node:fs";
 import { createServer } from "node:http";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import express from "express";
 import { WebSocket, WebSocketServer } from "ws";
@@ -34,9 +35,12 @@ app.get("/api/health", (_req, res) => {
 	res.json({ ok: true, piVersion: VERSION, cwd: CWD, pid: process.pid });
 });
 
-// Production: serve the built frontend from web/dist (path is relative to the
-// project root, which is always the process cwd for the npm scripts).
-const webDist = join(process.cwd(), "web", "dist");
+// Production: serve the built frontend from web/dist. Resolve relative to this
+// module so it works when installed as a package (global/npx/Docker), not just
+// from the repo root. In dev, Vite serves the UI on :5173 and proxies /ws.
+const here = dirname(fileURLToPath(import.meta.url)); // <pkg>/dist/server or <pkg>/server
+const pkgRoot = resolve(here, "..", "..");
+const webDist = join(pkgRoot, "web", "dist");
 if (existsSync(webDist)) {
 	app.use(express.static(webDist));
 	app.get(/^\/(?!api\/|ws).*/, (_req, res) => {

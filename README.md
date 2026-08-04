@@ -43,6 +43,31 @@ npm run build        # compiles server (tsc) + frontend (vite)
 npm start            # serves everything on http://localhost:8787
 ```
 
+## One-command run (npm)
+
+The package is published on npm as [`pi-web-ui`](https://www.npmjs.com/package/pi-web-ui).
+
+```bash
+# run without installing (pulls the latest, starts on :8787)
+npx pi-web-ui
+
+# or install globally and run anywhere
+npm i -g pi-web-ui
+pi-web-ui
+
+# pick a port / workspace
+PORT=9000 PI_WEB_CWD=/path/to/project pi-web-ui
+```
+
+The `pi-web-ui` command starts the production server: it serves the built
+frontend and the WebSocket API from wherever the package is installed — no
+repo checkout needed. It uses **your** `~/.pi/agent` config (auth/models/skills)
+and stores per-client sessions under `<PI_WEB_CWD>/.pi-web`.
+
+> **pi-managed npm?** If your `npm` is the pi wrapper that blocks dependency
+> install scripts, approve node-pty's native build once after installing:
+> `npm approve-scripts node-pty@1.1.0` (standard npm does this automatically).
+
 ## Configuration
 
 | Env var | Default | Description |
@@ -157,6 +182,43 @@ Server → client: `ready`, `snapshot` (full `UiState`), `tool_delta`, `notice`,
 | `npm run typecheck` | `tsc --noEmit` for both server and web |
 | `node terminal-smoke-test.mjs` | WS-level terminal/commands protocol test (build first) |
 | `node terminal-browser-test.mjs` | headless-browser E2E of the terminal view (build first) |
+
+## Deploy & auto-start on boot
+
+### Docker (one command)
+
+```bash
+docker compose up -d     # builds, starts on :8787, auto-restarts on boot
+```
+
+`restart: unless-stopped` in `docker-compose.yml` brings the server back up
+whenever the Docker daemon starts (boot, crashes, reboots). Mount a volume for
+`/app/.pi-web` (sessions persist) and, optionally, your `~/.pi/agent` config
+and a workspace — see the comments in `docker-compose.yml`.
+
+### Linux — systemd
+
+```bash
+sudo npm i -g pi-web-ui
+sudo cp deploy/pi-web-ui.service /etc/systemd/system/
+# edit User/WorkingDirectory/Environment in the unit first
+sudo systemctl daemon-reload
+sudo systemctl enable --now pi-web-ui     # starts now + on every boot
+journalctl -u pi-web-ui -f                # logs
+```
+
+### macOS — launchd
+
+```bash
+npm i -g pi-web-ui
+cp deploy/com.xingshuyin.pi-web-ui.plist ~/Library/LaunchAgents/
+# edit ProgramArguments / WorkingDirectory / PI_WEB_CWD (which pi-web-ui)
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.xingshuyin.pi-web-ui.plist
+# logs: /tmp/pi-web-ui.log, /tmp/pi-web-ui.err
+```
+
+Both templates use `KeepAlive`/`Restart=on-failure` so the server survives
+crashes, and start at login/boot automatically.
 
 ## License
 
