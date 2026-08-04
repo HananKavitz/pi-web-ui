@@ -188,6 +188,10 @@ curl -s https://registry.npmjs.org/pi-web-ui/latest | jq .version
 - 提交信息不要带 `Co-authored-by`（P1 规则，仓库 hook 会拦）。
 - `.pi/commands.json` 含个人本地命令，改动会进公开仓库——提交前跟用户确认是否要推。
 - 大改动发布前先问用户是否要 `npm publish`（会真实消耗账号权限、触发构建）。
+- **服务方式部署的实例升级后必须重启**：`npm i -g` 只更新磁盘文件，已运行进程内存里还是旧代码——
+  前端是每次请求实时读盘的（会先变新），但 WS 消息处理是进程内旧逻辑，新旧混跑会表现为
+  「界面是新的、某功能一直加载中」。重启：`pi-web-ui server restart`（launchd/systemd）
+  或重启前台进程。
 
 ## 7. 环境变量
 
