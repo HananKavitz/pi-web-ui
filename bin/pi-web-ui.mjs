@@ -80,7 +80,7 @@ function checkNodeVersion() {
 		console.error(
 			`✖ pi-web-ui 需要 Node.js >= ${NODE_MIN.join(".")}（当前 ${process.versions.node}）。\n` +
 				`  pi SDK 的代码使用了 import attributes（with）语法，旧版 Node 无法解析。\n` +
-				`  请升级 Node：https://nodejs.org（或 nvm-windows / fnm）后重装：npm i -g pi-web-ui`, 
+				`  请升级 Node：https://nodejs.org（或 nvm-windows / fnm）后重装：npm i -g pi-web-ui`,
 		);
 		process.exit(1);
 	}

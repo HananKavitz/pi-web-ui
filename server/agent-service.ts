@@ -670,7 +670,11 @@ export class ClientSession {
 		return configured;
 	}
 
-	/** Run a command async, collecting stdout+stderr; kills on timeout. */
+	/**
+	 * Run a command async, collecting stdout+stderr; kills on timeout.
+	 * Never throws / never crashes the server: spawn errors (ENOENT etc.)
+	 * resolve with code -1 so callers can report them as notices.
+	 */
 	private runAsync(
 		cmd: string,
 		args: string[],
@@ -679,19 +683,29 @@ export class ClientSession {
 		return new Promise((resolve) => {
 			let p;
 			try {
-				p = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+				p = spawn(cmd, args, {
+					stdio: ["ignore", "pipe", "pipe"],
+					// Windows: npm and friends are .cmd shims — Node can only exec
+					// them through the shell (otherwise spawn npm → ENOENT).
+					shell: process.platform === "win32",
+				});
 			} catch (err) {
 				resolve({ code: -1, out: String(err) });
 				return;
 			}
 			let out = "";
+			let settled = false;
+			const done = (code: number | null, text?: string) => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(t);
+				resolve({ code, out: text ?? out });
+			};
+			const t = setTimeout(() => p.kill(), timeoutMs);
 			p.stdout?.on("data", (d: Buffer) => (out += d.toString()));
 			p.stderr?.on("data", (d: Buffer) => (out += d.toString()));
-			const t = setTimeout(() => p.kill(), timeoutMs);
-			p.on("close", (code) => {
-				clearTimeout(t);
-				resolve({ code, out });
-			});
+			p.on("error", (err) => done(-1, String(err)));
+			p.on("close", (code) => done(code));
 		});
 	}
 
