@@ -1,0 +1,13 @@
+node_modules/
+dist/
+web/dist/
+*.log
+.env
+.DS_Store
+data/
+.pi-web/
+
+# ad-hoc debug / repro scripts
+repro-view-switch.mjs
+switch-test3.tmp.mjs
+todo-list.ts

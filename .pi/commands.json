@@ -1,0 +1,14 @@
+{
+  "commands": [
+    {
+      "name": "ls",
+      "command": "ls",
+      "cwd": "${pwd}"
+    },
+    {
+      "name": "top",
+      "command": "top",
+      "cwd": "${pwd}"
+    }
+  ]
+}
