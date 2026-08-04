@@ -4,8 +4,10 @@ import type {
 	CommandDef,
 	FileListing,
 	ModelInfo,
+	ProviderStatus,
 	ServerMessage,
 	SessionSummary,
+	UiProviderConfig,
 	UiState,
 } from "./types";
 
@@ -46,6 +48,10 @@ export interface ChatState {
 	models: ModelInfo[];
 	/** True while a model list request is in flight. */
 	modelsLoading: boolean;
+	/** Custom providers from agentDir/models.json (model config panel). */
+	modelsConfig: UiProviderConfig[];
+	/** Built-in providers with auth status (key-only config). */
+	providers: ProviderStatus[];
 	/** Path completions for the cwd input. */
 	pathCompletions: { name: string; path: string; type: "dir" | "file" }[];
 	/** Extension widgets (TUI overlays bridged to the web UI). */
@@ -76,6 +82,8 @@ type Action =
 	| { type: "sessions"; sessions: SessionSummary[] }
 	| { type: "files"; files: FileListing }
 	| { type: "models"; models: ModelInfo[]; loading: boolean }
+	| { type: "models_config"; providers: UiProviderConfig[] }
+	| { type: "providers_status"; providers: ProviderStatus[] }
 	| {
 			type: "path_completions";
 			completions: { name: string; path: string; type: "dir" | "file" }[];
@@ -215,6 +223,10 @@ function reducer(state: ChatState, action: Action): ChatState {
 			return { ...state, files: action.files };
 		case "models":
 			return { ...state, models: action.models, modelsLoading: action.loading };
+		case "models_config":
+			return { ...state, modelsConfig: action.providers };
+		case "providers_status":
+			return { ...state, providers: action.providers };
 		case "path_completions":
 			return { ...state, pathCompletions: action.completions };
 		case "widgets":
@@ -288,6 +300,8 @@ export function useChat() {
 		files: null,
 		models: [],
 		modelsLoading: false,
+		modelsConfig: [],
+		providers: [],
 		pathCompletions: [],
 		widgets: [],
 		statuses: [],

@@ -9,7 +9,8 @@
  * snapshots. The frontend is snapshot-driven (server is the source of truth),
  * so reconnects just re-request a snapshot.
  */
-import { existsSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import {
 	createAgentSessionFromServices,
@@ -29,6 +30,7 @@ import type {
 	ServerMessage,
 	SessionSummary,
 	UiMessage,
+	UiProviderConfig,
 	UiState,
 } from "./protocol.js";
 import {
@@ -387,6 +389,8 @@ export class ClientSession {
 	private queueSteering = 0;
 	private queueFollowUp = 0;
 	private disposed = false;
+	/** pi-config readiness check, cached briefly so 60ms snapshots don't hit disk. */
+	private piCheckCache: { at: number; configured: boolean } | null = null;
 
 	private constructor(
 		clientId: string,
@@ -628,6 +632,7 @@ export class ClientSession {
 			errorMessage: state.errorMessage,
 			tools: state.tools.map((t) => t.name),
 			version: ++this.version,
+			piConfigured: this.isPiConfigured(),
 			stats,
 		};
 	}
@@ -635,6 +640,367 @@ export class ClientSession {
 	/** Resolve a browser-bridged dialog (select/confirm/input) for this session. */
 	resolveDialog(id: number, value: string | boolean | null): void {
 		this.webUi.resolveDialog(id, value);
+	}
+
+	/**
+	 * Whether the pi agent config looks ready: the agent dir exists and
+	 * auth.json has at least one provider credential. Cached for 2s.
+	 */
+	isPiConfigured(): boolean {
+		const now = Date.now();
+		const cached = this.piCheckCache;
+		if (cached && now - cached.at < 2000) return cached.configured;
+		let configured = false;
+		try {
+			const authPath = join(this.agentDir, "auth.json");
+			if (existsSync(authPath)) {
+				const data = JSON.parse(readFileSync(authPath, "utf8")) as Record<
+					string,
+					unknown
+				>;
+				configured =
+					typeof data === "object" &&
+					data !== null &&
+					Object.keys(data).length > 0;
+			}
+		} catch {
+			configured = false;
+		}
+		this.piCheckCache = { at: now, configured };
+		return configured;
+	}
+
+	/** Run a command async, collecting stdout+stderr; kills on timeout. */
+	private runAsync(
+		cmd: string,
+		args: string[],
+		timeoutMs: number,
+	): Promise<{ code: number | null; out: string }> {
+		return new Promise((resolve) => {
+			let p;
+			try {
+				p = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+			} catch (err) {
+				resolve({ code: -1, out: String(err) });
+				return;
+			}
+			let out = "";
+			p.stdout?.on("data", (d: Buffer) => (out += d.toString()));
+			p.stderr?.on("data", (d: Buffer) => (out += d.toString()));
+			const t = setTimeout(() => p.kill(), timeoutMs);
+			p.on("close", (code) => {
+				clearTimeout(t);
+				resolve({ code, out });
+			});
+		});
+	}
+
+	/**
+	 * Auto-install the pi agent: ensure the config dir exists and install the
+	 * pi CLI globally (npm i -g). Auth is configured afterwards via the API key
+	 * form or by running `pi` in a terminal.
+	 */
+	async installPiAgent(): Promise<void> {
+		try {
+			mkdirSync(this.agentDir, { recursive: true });
+			this.emit({
+				type: "notice",
+				level: "info",
+				text: "正在安装 pi agent CLI（npm i -g @earendil-works/pi-coding-agent）…",
+			});
+			const { code, out } = await this.runAsync(
+				"npm",
+				["i", "-g", "@earendil-works/pi-coding-agent"],
+				180_000,
+			);
+			if (code === 0) {
+				this.emit({
+					type: "notice",
+					level: "info",
+					text: "✅ pi agent CLI 安装完成。填入 API 密钥即可开始，或在终端运行 pi 完成登录。",
+				});
+			} else {
+				this.emit({
+					type: "notice",
+					level: "error",
+					text: `pi agent 安装失败（${code ?? "timeout"}）：${out.slice(0, 400)}`,
+				});
+			}
+		} catch (err) {
+			this.emit({
+				type: "notice",
+				level: "error",
+				text: `pi agent 安装失败：${(err as Error).message}`,
+			});
+		}
+		this.flushSnapshot();
+	}
+
+	/** Persist an api-key credential for a provider (auth.json) and apply it now. */
+	async setProviderApiKey(provider: string, apiKey: string): Promise<void> {
+		const key = apiKey.trim();
+		if (!provider.trim()) {
+			this.emit({ type: "notice", level: "error", text: "请填写服务商 ID" });
+			return;
+		}
+		if (!key) {
+			this.emit({ type: "notice", level: "error", text: "请填写 API 密钥" });
+			return;
+		}
+		try {
+			// Persist to auth.json (auth.json shape: { <provider>: { type: "api_key", key } }).
+			const authPath = join(this.agentDir, "auth.json");
+			mkdirSync(this.agentDir, { recursive: true });
+			let data: Record<string, unknown> = {};
+			try {
+				data = JSON.parse(readFileSync(authPath, "utf8")) as Record<
+					string,
+					unknown
+				>;
+			} catch {
+				// no file yet / unparsable — start fresh
+			}
+			data[provider.trim()] = { type: "api_key", key };
+			writeFileSync(authPath, JSON.stringify(data, null, 2) + "\n");
+			// Apply immediately for this session (runtime credentials are cached), then
+			// refresh models. allowNetwork downloads the provider's official model
+			// catalog (openai/anthropic/… are dynamic providers with no built-in list).
+			const mr = this.runtime.services.modelRuntime;
+			await mr.setRuntimeApiKey(provider.trim(), key);
+			await mr.refresh({ allowNetwork: true });
+			this.piCheckCache = null;
+			this.emit({
+				type: "notice",
+				level: "info",
+				text: `✅ 已保存 ${provider.trim()} 的 API 密钥并刷新模型列表`,
+			});
+			await this.listModels();
+			await this.listProviders();
+		} catch (err) {
+			this.emit({
+				type: "notice",
+				level: "error",
+				text: `保存 API 密钥失败：${(err as Error).message}`,
+			});
+		}
+		this.flushSnapshot();
+	}
+
+	/** Enumerate pi's built-in providers with auth status (key-only config). */
+	async listProviders(): Promise<void> {
+		try {
+			const mr = this.runtime.services.modelRuntime;
+			const providers = mr.getProviders().map((p) => {
+				const st = mr.getProviderAuthStatus(p.id);
+				return {
+					id: p.id,
+					name: p.name,
+					configured: st?.configured ?? false,
+					source: st?.source,
+				};
+			});
+			this.emit({ type: "providers_status", providers });
+		} catch (err) {
+			this.emit({
+				type: "notice",
+				level: "error",
+				text: `获取服务商列表失败：${(err as Error).message}`,
+			});
+		}
+	}
+
+	// ---------------------------------------------------------------------------
+	// Custom model config (agentDir/models.json)
+	// ---------------------------------------------------------------------------
+
+	private modelsConfigPath(): string {
+		return join(this.agentDir, "models.json");
+	}
+
+	/** Strip // and /* *\/ comments without touching string literals (URLs contain //). */
+	private static stripJsonComments(src: string): string {
+		let out = "";
+		let inString = false;
+		let i = 0;
+		while (i < src.length) {
+			const c = src[i];
+			const next = src[i + 1];
+			if (inString) {
+				out += c;
+				if (c === "\\") {
+					out += next ?? "";
+					i += 2;
+					continue;
+				}
+				if (c === '"') inString = false;
+				i++;
+				continue;
+			}
+			if (c === '"') {
+				inString = true;
+				out += c;
+				i++;
+				continue;
+			}
+			if (c === "/" && next === "/") {
+				while (i < src.length && src[i] !== "\n") i++;
+				continue;
+			}
+			if (c === "/" && next === "*") {
+				i += 2;
+				while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i++;
+				i += 2;
+				continue;
+			}
+			out += c;
+			i++;
+		}
+		return out;
+	}
+
+	/** Read + parse models.json (tolerating // and /* *\/ comments like the SDK). */
+	private readModelsConfig(): {
+		providers: Record<string, Record<string, unknown>>;
+	} {
+		const path = this.modelsConfigPath();
+		try {
+			const raw = readFileSync(path, "utf8");
+			const parsed = JSON.parse(ClientSession.stripJsonComments(raw)) as {
+				providers?: Record<string, Record<string, unknown>>;
+			};
+			return { providers: parsed?.providers ?? {} };
+		} catch {
+			return { providers: {} };
+		}
+	}
+
+	/** Send the current models.json custom providers to the client. */
+	async listModelsConfig(): Promise<void> {
+		const { providers } = this.readModelsConfig();
+		const list: UiProviderConfig[] = Object.entries(providers).map(
+			([providerId, p]) => {
+				const models = Array.isArray(p.models)
+					? (p.models as Record<string, unknown>[]).map((m) => ({
+							id: String(m.id ?? ""),
+							name: m.name as string | undefined,
+							reasoning: m.reasoning as boolean | undefined,
+							input: Array.isArray(m.input) ? (m.input as string[]) : undefined,
+							contextWindow: m.contextWindow as number | undefined,
+							maxTokens: m.maxTokens as number | undefined,
+						}))
+					: [];
+				return {
+					providerId,
+					name: p.name as string | undefined,
+					api: p.api as string | undefined,
+					baseUrl: p.baseUrl as string | undefined,
+					apiKey: p.apiKey as string | undefined,
+					authHeader: p.authHeader as boolean | undefined,
+					headers: p.headers as Record<string, string> | undefined,
+					models,
+				};
+			},
+		);
+		this.emit({ type: "models_config", providers: list });
+	}
+
+	/** Upsert one provider into models.json and hot-reload the model runtime. */
+	async saveModelConfig(
+		providerId: string,
+		config: UiProviderConfig,
+	): Promise<void> {
+		const pid = providerId.trim();
+		if (!pid || !/^[\w.-]+$/.test(pid)) {
+			this.emit({
+				type: "notice",
+				level: "error",
+				text: "服务商 ID 无效（仅字母/数字/._-）",
+			});
+			return;
+		}
+		const models = (config.models ?? [])
+			.filter((m) => m.id && m.id.trim())
+			.map((m) => ({
+				id: m.id.trim(),
+				...(m.name?.trim() ? { name: m.name.trim() } : {}),
+				...(m.reasoning ? { reasoning: true } : {}),
+				...(m.input?.length ? { input: m.input } : {}),
+				...(m.contextWindow ? { contextWindow: Number(m.contextWindow) } : {}),
+				...(m.maxTokens ? { maxTokens: Number(m.maxTokens) } : {}),
+			}));
+		if (models.length === 0) {
+			this.emit({ type: "notice", level: "error", text: "至少需要一个模型" });
+			return;
+		}
+		try {
+			const { providers } = this.readModelsConfig();
+			providers[pid] = {
+				...(config.name?.trim() ? { name: config.name.trim() } : {}),
+				...(config.api?.trim() ? { api: config.api.trim() } : {}),
+				...(config.baseUrl?.trim() ? { baseUrl: config.baseUrl.trim() } : {}),
+				...(config.apiKey?.trim() ? { apiKey: config.apiKey.trim() } : {}),
+				...(config.authHeader ? { authHeader: true } : {}),
+				...(config.headers && Object.keys(config.headers).length > 0
+					? { headers: config.headers }
+					: {}),
+				models,
+			};
+			mkdirSync(this.agentDir, { recursive: true });
+			writeFileSync(
+				this.modelsConfigPath(),
+				JSON.stringify({ providers }, null, 2) + "\n",
+			);
+			await this.runtime.services.modelRuntime.refresh();
+			await this.listModelsConfig();
+			await this.listModels();
+			this.emit({
+				type: "notice",
+				level: "info",
+				text: `✅ 已保存服务商 ${pid}（${models.length} 个模型）并刷新模型列表`,
+			});
+		} catch (err) {
+			this.emit({
+				type: "notice",
+				level: "error",
+				text: `保存模型配置失败：${(err as Error).message}`,
+			});
+		}
+		this.flushSnapshot();
+	}
+
+	/** Remove a provider from models.json and hot-reload. */
+	async deleteModelConfig(providerId: string): Promise<void> {
+		try {
+			const { providers } = this.readModelsConfig();
+			if (!(providerId in providers)) {
+				this.emit({
+					type: "notice",
+					level: "info",
+					text: `服务商 ${providerId} 不存在`,
+				});
+				return;
+			}
+			delete providers[providerId];
+			writeFileSync(
+				this.modelsConfigPath(),
+				JSON.stringify({ providers }, null, 2) + "\n",
+			);
+			await this.runtime.services.modelRuntime.refresh();
+			await this.listModelsConfig();
+			await this.listModels();
+			this.emit({
+				type: "notice",
+				level: "info",
+				text: `🗑  已删除服务商 ${providerId}`,
+			});
+		} catch (err) {
+			this.emit({
+				type: "notice",
+				level: "error",
+				text: `删除模型配置失败：${(err as Error).message}`,
+			});
+		}
+		this.flushSnapshot();
 	}
 
 	/** Send a snapshot immediately (cancels any pending throttled one). */

@@ -97,6 +97,12 @@ export interface UiState {
 	tools: string[];
 	/** Monotonic snapshot sequence — clients can use it to drop stale snapshots. */
 	version: number;
+	/**
+	 * Whether the pi agent config looks ready (agentDir + auth.json with at
+	 * least one provider credential). False → the client should offer the
+	 * one-time auto-install flow.
+	 */
+	piConfigured: boolean;
 	/** Live session stats for the footer status bar. */
 	stats: {
 		totalMessages: number;
@@ -172,7 +178,20 @@ export type ClientMessage =
 	| { type: "set_thinking"; level: string }
 	| { type: "set_cwd"; path: string }
 	| { type: "complete_path"; path: string }
-	| { type: "dialog_response"; id: number; value: string | boolean | null };
+	| { type: "dialog_response"; id: number; value: string | boolean | null }
+	// -- pi agent setup ------------------------------------------------------
+	/** Auto-install the pi agent (mkdir config dir + npm i -g the CLI). */
+	| { type: "install_pi_agent" }
+	/** Persist an api-key credential for a provider (auth.json) and apply it now. */
+	| { type: "set_provider_api_key"; provider: string; apiKey: string }
+	// -- custom model config (agentDir/models.json) ---------------------------
+	| { type: "list_models_config" }
+	/** Upsert one provider (api/baseUrl/apiKey + its models) into models.json. */
+	| { type: "save_model_config"; providerId: string; config: UiProviderConfig }
+	/** Remove a provider from models.json. */
+	| { type: "delete_model_config"; providerId: string }
+	/** List pi's built-in providers with their auth status (key-only config). */
+	| { type: "list_providers" };
 
 // ---------------------------------------------------------------------------
 // Server -> Client
@@ -202,6 +221,42 @@ export interface ModelInfo {
 	reasoning: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Custom model configuration (agentDir/models.json) — browser-editable shape
+// ---------------------------------------------------------------------------
+
+/** One model definition inside a custom provider. */
+export interface UiModelConfigEntry {
+	id: string;
+	name?: string;
+	reasoning?: boolean;
+	input?: string[];
+	contextWindow?: number;
+	maxTokens?: number;
+}
+
+/** A custom provider block in models.json (providers.<id>). */
+export interface UiProviderConfig {
+	providerId: string;
+	name?: string;
+	/** api type: openai-completions / openai-responses / anthropic-messages / google-generative-ai. */
+	api?: string;
+	baseUrl?: string;
+	apiKey?: string;
+	authHeader?: boolean;
+	headers?: Record<string, string>;
+	models: UiModelConfigEntry[];
+}
+
+/** One of pi's built-in providers, with whether auth is configured. */
+export interface ProviderStatus {
+	id: string;
+	name: string;
+	configured: boolean;
+	/** Where auth came from: stored / runtime / environment / models_json_key … */
+	source?: string;
+}
+
 export type ServerMessage =
 	| { type: "ready"; clientId: string; serverVersion: string }
 	| { type: "snapshot"; state: UiState }
@@ -227,6 +282,8 @@ export type ServerMessage =
 			entries: FileEntry[];
 	  }
 	| { type: "models"; models: ModelInfo[] }
+	| { type: "models_config"; providers: UiProviderConfig[] }
+	| { type: "providers_status"; providers: ProviderStatus[] }
 	| {
 			type: "path_completions";
 			completions: { name: string; path: string; type: "dir" | "file" }[];

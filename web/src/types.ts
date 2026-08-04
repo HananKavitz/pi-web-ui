@@ -86,6 +86,8 @@ export interface UiState {
 	errorMessage?: string;
 	tools: string[];
 	version: number;
+	/** Whether the pi agent config looks ready (auth.json has credentials). */
+	piConfigured?: boolean;
 	/** Live session stats for the footer status bar. */
 	stats: {
 		totalMessages: number;
@@ -156,7 +158,15 @@ export type ClientMessage =
 	| { type: "set_thinking"; level: string }
 	| { type: "set_cwd"; path: string }
 	| { type: "complete_path"; path: string }
-	| { type: "dialog_response"; id: number; value: string | boolean | null };
+	| { type: "dialog_response"; id: number; value: string | boolean | null }
+	// -- pi agent setup ------------------------------------------------------
+	| { type: "install_pi_agent" }
+	| { type: "set_provider_api_key"; provider: string; apiKey: string }
+	// -- custom model config (agentDir/models.json) ---------------------------
+	| { type: "list_models_config" }
+	| { type: "save_model_config"; providerId: string; config: UiProviderConfig }
+	| { type: "delete_model_config"; providerId: string }
+	| { type: "list_providers" };
 
 export interface SessionSummary {
 	path: string;
@@ -188,6 +198,36 @@ export interface ModelInfo {
 	reasoning: boolean;
 }
 
+/** One model definition inside a custom provider (agentDir/models.json). */
+export interface UiModelConfigEntry {
+	id: string;
+	name?: string;
+	reasoning?: boolean;
+	input?: string[];
+	contextWindow?: number;
+	maxTokens?: number;
+}
+
+/** A custom provider block in models.json (providers.<id>). */
+export interface UiProviderConfig {
+	providerId: string;
+	name?: string;
+	api?: string;
+	baseUrl?: string;
+	apiKey?: string;
+	authHeader?: boolean;
+	headers?: Record<string, string>;
+	models: UiModelConfigEntry[];
+}
+
+/** One of pi's built-in providers, with whether auth is configured. */
+export interface ProviderStatus {
+	id: string;
+	name: string;
+	configured: boolean;
+	source?: string;
+}
+
 export type ServerMessage =
 	| { type: "ready"; clientId: string; serverVersion: string }
 	| { type: "snapshot"; state: UiState }
@@ -208,6 +248,8 @@ export type ServerMessage =
 			entries: FileEntry[];
 	  }
 	| { type: "models"; models: ModelInfo[] }
+	| { type: "models_config"; providers: UiProviderConfig[] }
+	| { type: "providers_status"; providers: ProviderStatus[] }
 	| {
 			type: "path_completions";
 			completions: { name: string; path: string; type: "dir" | "file" }[];

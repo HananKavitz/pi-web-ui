@@ -19,10 +19,13 @@ interface TopBarProps {
 			| { type: "list_models" }
 			| { type: "set_model"; modelId: string }
 			| { type: "set_thinking"; level: string }
-			| { type: "new_chat" },
+			| { type: "new_chat" }
+			| { type: "list_models_config" },
 	) => boolean;
 	view: "chat" | "terminal";
 	onViewChange: (view: "chat" | "terminal") => void;
+	/** Open the custom model config panel. */
+	onManageModels: () => void;
 	/** Sound notification settings + change handler (owned by App). */
 	sound: SoundSettings;
 	onSoundChange: (settings: SoundSettings) => void;
@@ -48,6 +51,7 @@ export function TopBar({
 	send,
 	view,
 	onViewChange,
+	onManageModels,
 	sound,
 	onSoundChange,
 	onSoundPreview,
@@ -160,6 +164,16 @@ export function TopBar({
 						onClick={() => send({ type: "list_models" })}
 					>
 						刷新模型列表
+					</button>
+					<button
+						type="button"
+						className="dd-refresh"
+						onClick={() => {
+							setModelOpen(false);
+							onManageModels();
+						}}
+					>
+						⚙ 管理模型（新增 / 修改）
 					</button>
 				</Dropdown>
 

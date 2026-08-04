@@ -133,6 +133,24 @@ wss.on("connection", (ws) => {
 			case "dialog_response":
 				cs.resolveDialog(msg.id, msg.value);
 				break;
+			case "install_pi_agent":
+				void cs.installPiAgent();
+				break;
+			case "set_provider_api_key":
+				void cs.setProviderApiKey(msg.provider, msg.apiKey);
+				break;
+			case "list_models_config":
+				void cs.listModelsConfig();
+				break;
+			case "save_model_config":
+				void cs.saveModelConfig(msg.providerId, msg.config);
+				break;
+			case "delete_model_config":
+				void cs.deleteModelConfig(msg.providerId);
+				break;
+			case "list_providers":
+				void cs.listProviders();
+				break;
 			case "terminal_create":
 				cs.terminals.create(
 					msg.terminalId,

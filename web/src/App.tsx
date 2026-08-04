@@ -7,6 +7,8 @@ import { ChatInput } from "./components/ChatInput";
 import { FooterBar } from "./components/FooterBar";
 import { Dialog } from "./components/Dialog";
 import { TerminalPanel } from "./components/TerminalPanel";
+import { PiSetupModal } from "./components/PiSetupModal";
+import { ModelConfigModal } from "./components/ModelConfigModal";
 import { useChat } from "./use-chat";
 import {
 	loadSoundSettings,
@@ -28,6 +30,10 @@ export function App() {
 	const { chat, send, dismissNotice, terminal } = useChat();
 	const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
 	const [view, setView] = useState<"chat" | "terminal">("chat");
+	// Setup modal: one-time prompt when the pi agent config is missing.
+	const [setupDismissed, setSetupDismissed] = useState(false);
+	// Custom model config panel (model dropdown → 管理模型).
+	const [manageModelsOpen, setManageModelsOpen] = useState(false);
 
 	// -- sound notifications --------------------------------------------------
 	const [sound, setSound] = useState<SoundSettings>(loadSoundSettings);
@@ -89,6 +95,7 @@ export function App() {
 				send={send}
 				view={view}
 				onViewChange={setView}
+				onManageModels={() => setManageModelsOpen(true)}
 				sound={sound}
 				onSoundChange={setSound}
 				onSoundPreview={(kind: SoundKind) => playSound(kind, sound)}
@@ -132,6 +139,26 @@ export function App() {
 			</div>
 			<FooterBar chat={chat} />
 			{chat.dialog && <Dialog dialog={chat.dialog} send={send} />}
+			{chat.ready &&
+				chat.state &&
+				chat.state.piConfigured === false &&
+				!setupDismissed &&
+				!manageModelsOpen && (
+					<PiSetupModal
+						send={send}
+						piConfigured={chat.state.piConfigured}
+						providers={chat.providers}
+						onClose={() => setSetupDismissed(true)}
+					/>
+				)}
+			{manageModelsOpen && (
+				<ModelConfigModal
+					send={send}
+					providers={chat.modelsConfig}
+					providerStatus={chat.providers}
+					onClose={() => setManageModelsOpen(false)}
+				/>
+			)}
 		</div>
 	);
 }
