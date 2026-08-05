@@ -71,7 +71,9 @@ async function main() {
 		executablePath:
 			"/Users/c/Library/Caches/ms-playwright/chromium-1228/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
 	});
-	const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+	const page = await browser.newPage({
+		viewport: { width: 1400, height: 900 },
+	});
 	const consoleErrors = [];
 	page.on("console", (m) => {
 		if (m.type() === "error") consoleErrors.push(m.text());

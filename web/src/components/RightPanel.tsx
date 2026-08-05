@@ -38,15 +38,23 @@ export function RightPanel({
 	const [loading, setLoading] = useState(false);
 	const files = chat.files;
 
+	/** How often to silently re-poll the current directory (ms). */
+	const AUTO_REFRESH_MS = 10_000;
+
 	// Monotonic request id — responses are only trusted if they match the latest
 	// requested path (guards against out-of-order responses when navigating fast).
 	const reqSeq = useRef(0);
 
+	// Last cwd we listed — when the workspace switches, jump back to its root.
+	const lastCwd = useRef<string | undefined>(undefined);
+
 	const request = useCallback(
-		(path: string) => {
+		(path: string, opts?: { silent?: boolean }) => {
 			const seq = ++reqSeq.current;
 			setCurrentPath(path);
-			setLoading(true);
+			// Silent refreshes (polling / cwd switch) keep the current listing on
+			// screen instead of flashing the loading placeholder.
+			if (!opts?.silent) setLoading(true);
 			const ok = send({
 				type: "list_files",
 				path: path === "" ? undefined : path,
@@ -66,6 +74,23 @@ export function RightPanel({
 		if (files && files.path === currentPath) setLoading(false);
 	}, [files, currentPath]);
 
+	// Auto-refresh: when the cwd changes (project switch / set_cwd) re-list its
+	// root; otherwise poll the current directory silently so the tree stays fresh
+	// without a manual refresh button.
+	useEffect(() => {
+		const cwd = chat.state?.cwd;
+		if (cwd !== lastCwd.current) {
+			lastCwd.current = cwd;
+			request("", { silent: true });
+			return;
+		}
+		const timer = setInterval(() => {
+			if (document.visibilityState === "hidden") return;
+			request(currentPath, { silent: true });
+		}, AUTO_REFRESH_MS);
+		return () => clearInterval(timer);
+	}, [chat.state?.cwd, currentPath, request]);
+
 	// Enter a directory.
 	const openDir = (path: string) => request(path);
 	// Go back to the parent.
@@ -79,17 +104,6 @@ export function RightPanel({
 
 	return (
 		<aside className="panel panel-right">
-			<div className="panel-header">
-				<span className="panel-title">{t("files")}</span>
-				<button
-					type="button"
-					className="panel-refresh"
-					title={t("refreshFiles")}
-					onClick={() => request(currentPath)}
-				>
-					<FiRefreshCw />
-				</button>
-			</div>
 			<div className="panel-crumbs">
 				<button
 					type="button"
@@ -210,6 +224,14 @@ export function RightPanel({
 						))}
 				</div>
 			)}
+			<button
+				type="button"
+				className="panel-fab"
+				title={t("refreshFiles")}
+				onClick={() => request(currentPath, { silent: true })}
+			>
+				<FiRefreshCw />
+			</button>
 		</aside>
 	);
 }

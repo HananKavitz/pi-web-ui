@@ -124,7 +124,6 @@ const zh = {
 	restartHint: "重启：pi-web-ui server restart",
 
 	/* right panel */
-	files: "文件",
 	refreshFiles: "刷新文件列表",
 	rootDir: "根目录",
 	noFiles: "暂无文件",
@@ -411,7 +410,6 @@ const en: Record<keyof typeof zh, string> = {
 	restartHint: "Restart: pi-web-ui server restart",
 
 	/* right panel */
-	files: "Files",
 	refreshFiles: "Refresh file list",
 	rootDir: "Root",
 	noFiles: "No files",

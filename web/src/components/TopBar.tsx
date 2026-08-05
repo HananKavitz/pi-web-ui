@@ -284,17 +284,17 @@ export function TopBar({
 					trigger={
 						<>
 							<FiDownload />
-							<span className="chip-sub">
-								v{chat.update?.current ?? "…"}
-							</span>
-							{chat.update && !chat.update.upToDate && !chat.update.pendingRestart && (
-								<span
-									className="update-dot"
-									title={t("updateAvailable", {
-										version: chat.update.latest ?? "",
-									})}
-								/>
-							)}
+							<span className="chip-sub">v{chat.update?.current ?? "…"}</span>
+							{chat.update &&
+								!chat.update.upToDate &&
+								!chat.update.pendingRestart && (
+									<span
+										className="update-dot"
+										title={t("updateAvailable", {
+											version: chat.update.latest ?? "",
+										})}
+									/>
+								)}
 						</>
 					}
 					open={updateOpen}

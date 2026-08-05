@@ -1,4 +1,4 @@
-import { FiFolder, FiMessageSquare, FiSquare } from "react-icons/fi";
+import { FiFolder, FiMessageSquare, FiRefreshCw } from "react-icons/fi";
 import type { SessionSummary } from "../types";
 import type { ChatState } from "../use-chat";
 import { useT } from "../i18n";
@@ -42,17 +42,6 @@ export function LeftPanel({ chat, send }: LeftPanelProps) {
 
 	return (
 		<aside className="panel panel-left">
-			<div className="panel-header">
-				<span className="panel-title">{t("chat")}</span>
-				<button
-					type="button"
-					className="panel-new"
-					title={t("newChat")}
-					onClick={() => send({ type: "new_chat" })}
-				>
-					<FiSquare />
-				</button>
-			</div>
 			{projects.length > 0 && (
 				<div className="panel-projects">
 					<div className="panel-section-title">{t("recentProjects")}</div>
@@ -73,7 +62,9 @@ export function LeftPanel({ chat, send }: LeftPanelProps) {
 									<span className="project-name">{projectName(p.path)}</span>
 									<span className="project-path">{p.path}</span>
 								</span>
-								<span className="project-time">{formatModified(p.lastUsed)}</span>
+								<span className="project-time">
+									{formatModified(p.lastUsed)}
+								</span>
 							</button>
 						);
 					})}
@@ -114,18 +105,17 @@ export function LeftPanel({ chat, send }: LeftPanelProps) {
 					);
 				})}
 			</div>
-			<div className="panel-footer">
-				<button
-					type="button"
-					className="panel-refresh"
-					onClick={() => {
-						send({ type: "list_sessions" });
-						send({ type: "list_projects" });
-					}}
-				>
-					{t("refreshList")}
-				</button>
-			</div>
+			<button
+				type="button"
+				className="panel-fab"
+				title={t("refreshList")}
+				onClick={() => {
+					send({ type: "list_sessions" });
+					send({ type: "list_projects" });
+				}}
+			>
+				<FiRefreshCw />
+			</button>
 		</aside>
 	);
 }
