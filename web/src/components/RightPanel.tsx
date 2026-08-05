@@ -9,9 +9,8 @@ import {
 	FiRefreshCw,
 } from "react-icons/fi";
 import type { ChatState } from "../use-chat";
-import { getClientId } from "../use-chat";
 import { useT } from "../i18n";
-import { dragHasFiles } from "../upload";
+import { downloadFile } from "../download";
 
 type AttachMode = "inline" | "reference";
 
@@ -27,10 +26,8 @@ interface RightPanelProps {
 	) => void;
 	/** Called when the user clicks a file to open the preview modal. */
 	onPreview: (path: string, name: string) => void;
-	/** OS file drag state over the panel ("" = current dir, null = none). */
-	onDragState: (folder: string | null) => void;
-	/** OS files dropped on the panel — App uploads them into `destDir`. */
-	onDropFiles: (destDir: string, dt: DataTransfer) => void;
+	/** Show a transient toast (download errors etc.). */
+	onNotice: (level: "info" | "warning" | "error", text: string) => void;
 }
 
 export function RightPanel({
@@ -38,8 +35,7 @@ export function RightPanel({
 	send,
 	onAttach,
 	onPreview,
-	onDragState,
-	onDropFiles,
+	onNotice,
 }: RightPanelProps) {
 	const t = useT();
 	const [currentPath, setCurrentPath] = useState<string>("");
@@ -110,60 +106,8 @@ export function RightPanel({
 
 	const crumbs = currentPath.split("/").filter(Boolean);
 
-	// -- OS file drag & drop (copy into a folder) ----------------------------
-	// Depth counter: dragenter/dragleave fire per child element, so only the
-	// first enter / last leave toggles the drop state. The folder under the
-	// cursor is derived from the event target so hovering a row highlights it.
-	const dragDepth = useRef(0);
-	const dragDest = useRef<string | null>(null);
-	const [dragFolder, setDragFolder] = useState<string | null>(null);
-
-	const onPanelDragEnter = (e: React.DragEvent) => {
-		if (!dragHasFiles(e)) return;
-		dragDepth.current += 1;
-		// Re-derive the folder on every enter (moving background → row must
-		// update the highlight); only notify when it actually changed.
-		const row = (e.target as HTMLElement).closest?.(".file-item.dir");
-		const dir = row ? (row as HTMLElement).dataset.path ?? "" : "";
-		if (dragDepth.current === 1 || dir !== dragDest.current) {
-			dragDest.current = dir;
-			setDragFolder(dir);
-			onDragState(dir);
-		}
-	};
-	const onPanelDragOver = (e: React.DragEvent) => {
-		if (!dragHasFiles(e)) return;
-		e.preventDefault();
-		e.dataTransfer.dropEffect = "copy";
-	};
-	const onPanelDragLeave = (e: React.DragEvent) => {
-		if (!dragHasFiles(e)) return;
-		dragDepth.current -= 1;
-		if (dragDepth.current > 0) return;
-		dragDepth.current = 0;
-		dragDest.current = null;
-		setDragFolder(null);
-		onDragState(null);
-	};
-	const onPanelDrop = (e: React.DragEvent) => {
-		if (!dragHasFiles(e)) return;
-		e.preventDefault();
-		dragDepth.current = 0;
-		const dest = dragDest.current ?? "";
-		dragDest.current = null;
-		setDragFolder(null);
-		onDragState(null);
-		onDropFiles(dest, e.dataTransfer);
-	};
-
 	return (
-		<aside
-			className={`panel panel-right ${dragFolder !== null ? "drag-over" : ""}`}
-			onDragEnter={onPanelDragEnter}
-			onDragOver={onPanelDragOver}
-			onDragLeave={onPanelDragLeave}
-			onDrop={onPanelDrop}
-		>
+		<aside className="panel panel-right">
 			<div className="panel-crumbs">
 				<button
 					type="button"
@@ -200,11 +144,7 @@ export function RightPanel({
 						)}
 						{files.entries.map((e) =>
 							e.type === "dir" ? (
-							<div
-								key={e.path}
-								className={`file-item dir ${dragFolder === e.path ? "drop-target" : ""}`}
-								data-path={e.path}
-							>
+								<div key={e.path} className="file-item dir">
 									<button
 										type="button"
 										className="file-dir-main"
@@ -242,17 +182,24 @@ export function RightPanel({
 										<span className="file-name-text">{e.name}</span>
 									</button>
 									{/* Download: any file, previewable or not (binary/archives
-									too). /api/file resolves against the client's workspace. */}
-									<a
+									too). Fetched as a blob so Safe Browsing can't block the
+									HTTP download and failures show a readable error. */}
+									<button
+										type="button"
 										className="file-attach download"
 										data-tip={t("downloadFile")}
-										href={`/api/file?clientId=${encodeURIComponent(
-											getClientId(),
-										)}&path=${encodeURIComponent(e.path)}&download=1`}
-										download={e.name}
+										onClick={() => {
+											void downloadFile(e.path, e.name).then((r) => {
+												if (!r.ok)
+													onNotice(
+														"error",
+														t("downloadFailed", { error: r.error }),
+													);
+											});
+										}}
 									>
 										<FiDownload />
-									</a>
+									</button>
 									<button
 										type="button"
 										className="file-attach inline"

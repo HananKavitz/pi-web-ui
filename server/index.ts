@@ -12,13 +12,12 @@
  *   PI_WEB_DATA_DIR where per-client session dirs are stored (default: <cwd>/.pi-web)
  *   PI_CODING_AGENT_DIR  pi config dir (auth/models/skills) — passed to the SDK
  */
-import { createWriteStream, existsSync } from "node:fs";
-import { mkdir, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
-import { basename, dirname, extname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
-import { pipeline } from "node:stream/promises";
 import express from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { VERSION } from "@earendil-works/pi-coding-agent";
@@ -55,7 +54,8 @@ app.get("/api/file", async (req, res) => {
 		// project), not the server's startup cwd — they can differ when the
 		// client switched projects or restored a previous workspace. Fall
 		// back to the server cwd for requests without a known client.
-		const cid = typeof req.query.clientId === "string" ? req.query.clientId : "";
+		const cid =
+			typeof req.query.clientId === "string" ? req.query.clientId : "";
 		const cs = cid ? service.get(cid) : undefined;
 		const wp = workspacePath(cs?.cwd ?? CWD, raw);
 		if (!wp) {
@@ -84,89 +84,6 @@ app.get("/api/file", async (req, res) => {
 		}
 	} catch {
 		res.status(404).end("not found");
-	}
-});
-
-/**
- * Save an uploaded file into the client's workspace (drag & drop from the OS
- * file manager). Query params:
- *   clientId  client session — resolves the workspace root (falls back to CWD)
- *   destDir   workspace-relative target directory ("" = workspace root)
- * Request body is the raw file bytes (streamed to disk); headers:
- *   X-File-Name       original file name (URI-encoded)
- *   X-File-Rel-Path   optional path of the file within the drop (URI-encoded)
- *                     — its directory part is recreated under destDir, so
- *                     dropping a whole folder keeps its structure. The final
- *                     segment is used as the file name.
- * Paths are validated against the workspace root; existing files get a
- * "name (1).ext" suffix instead of being overwritten.
- */
-app.post("/api/upload", async (req, res) => {
-	const fail = (status: number, error: string) =>
-		res.status(status).json({ ok: false, error });
-	try {
-		const cid = typeof req.query.clientId === "string" ? req.query.clientId : "";
-		const rawDest =
-			typeof req.query.destDir === "string" ? req.query.destDir : "";
-		const cs = cid ? service.get(cid) : undefined;
-		const wp = workspacePath(cs?.cwd ?? CWD, rawDest);
-		if (!wp) {
-			fail(400, "目标目录不在工作区内");
-			return;
-		}
-		const nameRaw =
-			typeof req.headers["x-file-name"] === "string"
-				? decodeURIComponent(req.headers["x-file-name"])
-				: "";
-		const relRaw =
-			typeof req.headers["x-file-rel-path"] === "string"
-				? decodeURIComponent(req.headers["x-file-rel-path"])
-				: "";
-		// Sanitize every path segment: strip separators/traversal, drop empties.
-		const clean = (s: string) => {
-			const seg = basename(s).replace(/[\\/]/g, "");
-			return seg && seg !== "." && seg !== ".." ? seg : null;
-		};
-		const relDirs = relRaw
-			.split("/")
-			.map(clean)
-			.filter((s): s is string => s !== null);
-		const name = clean(
-			relDirs.length > 0 ? relDirs[relDirs.length - 1] : nameRaw,
-		);
-		if (!name) {
-			fail(400, "无效文件名");
-			return;
-		}
-		// Ensure the destination directory exists (and is a directory).
-		const destAbs = join(wp.abs, ...relDirs.slice(0, -1));
-		const destSt = await stat(wp.abs).catch(() => null);
-		if (destSt && !destSt.isDirectory()) {
-			fail(400, "目标不是目录");
-			return;
-		}
-		await mkdir(destAbs, { recursive: true });
-		// Never overwrite: "name (1).ext", "name (2).ext", …
-		const ext = extname(name);
-		const stem = name.slice(0, name.length - ext.length);
-		let finalName = name;
-		for (let i = 1; existsSync(join(destAbs, finalName)); i++) {
-			finalName = `${stem} (${i})${ext}`;
-		}
-		const finalAbs = join(destAbs, finalName);
-		// Stream the request body straight to disk.
-		let size = 0;
-		const out = createWriteStream(finalAbs);
-		req.on("data", (chunk: Buffer) => {
-			size += chunk.length;
-		});
-		await pipeline(req, out);
-		const relOut = [rawDest, ...relDirs.slice(0, -1), finalName]
-			.filter(Boolean)
-			.join("/");
-		res.json({ ok: true, path: relOut, name: finalName, size });
-	} catch {
-		fail(500, "上传失败");
 	}
 });
 

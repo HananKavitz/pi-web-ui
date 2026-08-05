@@ -73,38 +73,50 @@ export function LeftPanel({ chat, send }: LeftPanelProps) {
 			)}
 			<div className="panel-body">
 				{chat.conversations.length > 1 && (
-					<div className="panel-section-title">{t("openConversations")}</div>
+					<>
+						<div className="panel-section-title">
+							{t("openConversations")}
+						</div>
+						{chat.conversations.map((c) => {
+							const active = chat.activeConversationId === c.id;
+							return (
+								<button
+									type="button"
+									key={c.id}
+									className={`session-item ${active ? "active" : ""}`}
+									title={`${c.title} — ${c.cwd}`}
+									onClick={() => {
+										if (!active)
+											send({ type: "switch_conversation", id: c.id });
+									}}
+								>
+									<FiMessageSquare className="session-icon" />
+									<span className="session-info">
+										<span className="session-title">{c.title}</span>
+										<span className="session-sub">
+											{/* Cross-directory conversations carry their own project —
+											show it so switching doesn't surprise. */}
+											<span className="session-cwd" title={c.cwd}>
+												<FiFolder /> {projectName(c.cwd)}
+											</span>
+											{active
+												? t("current")
+												: t("messageCount", { n: c.messageCount })}
+										</span>
+									</span>
+									{c.isStreaming && (
+										<span
+											className="conv-streaming"
+											title={t("streaming")}
+										/>
+									)}
+								</button>
+							);
+						})}
+						<div className="panel-section-divider" />
+					</>
 				)}
-				{chat.conversations.map((c) => {
-					const active = chat.activeConversationId === c.id;
-					return (
-						<button
-							type="button"
-							key={c.id}
-							className={`session-item ${active ? "active" : ""}`}
-							title={`${c.title} — ${c.cwd}`}
-							onClick={() => {
-								if (!active) send({ type: "switch_conversation", id: c.id });
-							}}
-						>
-							<FiMessageSquare className="session-icon" />
-							<span className="session-info">
-								<span className="session-title">{c.title}</span>
-								<span className="session-sub">
-									{active
-										? t("current")
-										: t("messageCount", { n: c.messageCount })}
-								</span>
-							</span>
-							{c.isStreaming && (
-								<span
-									className="conv-streaming"
-									title={t("streaming")}
-								/>
-							)}
-						</button>
-					);
-				})}
+				<div className="panel-section-title">{t("historySessions")}</div>
 				{sessions.length === 0 && (
 					<div className="panel-empty">{t("noHistory")}</div>
 				)}

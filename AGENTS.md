@@ -60,8 +60,8 @@ pi-web-ui/
 │   │   ├── i18n.tsx            # ★ 中英文案（zh 默认），新增 key 必须两处都加
 │   │   ├── styles.css          # ★ 全部样式（按组件分区，带注释分隔线）
 │   │   ├── sounds.ts           # WebAudio 提示音
-│   │   ├── upload.ts           # 拖放上传：uploadFile（fetch 流式 POST /api/upload）+
-│   │   │                       #   collectDroppedFiles（webkitGetAsEntry 递归收集目录）
+│   │   ├── download.ts         # 下载：downloadFile（fetch→blob→objectURL，绕开 Chrome
+│   │   │                       #   Safe Browsing 对 HTTP 下载的拦截，错误可读）
 │   │   └── components/         # 见下
 │   └── dist/                   # 构建产物（gitignore，但打进 npm 包）
 ├── bin/pi-web-ui.mjs           # CLI：前台启动 / --port --cwd --data-dir / server install|uninstall|start|stop|restart|status
@@ -77,7 +77,7 @@ pi-web-ui/
 | 组件 | 职责 |
 | --- | --- |
 | `FilePreview.tsx` | 文件预览弹窗：行号、点选/拖拽/Shift 选区、添加到对话（lines 附件） |
-| `LeftPanel.tsx` | 左栏：最近项目（点击切换 cwd）+ 当前项目的会话列表 |
+| `LeftPanel.tsx` | 左栏：最近项目（点击切换 cwd）+ 打开的对话（>1 个时显示，每条带所属项目标签，跨目录切换发 notice）+ 分割线 + 历史对话列表 |
 | `RightPanel.tsx` | 文件树浏览（list_files），文件名点击→预览，📎/🔗/👁 附件按钮 |
 | `ChatInput.tsx` | 输入框 + 附件 chips（inline/reference/lines 三色） |
 | `Message.tsx` / `MessageList.tsx` | 消息渲染：附件卡片（`stripFileWrapper` 剥 `<file>` 包装）、流式光标、tool 结果关联；超过 30 条后旧消息折叠为摘要行（`CollapsedMessage`，惰性渲染，点击展开，常量 `KEEP_RECENT`/`COLLAPSE_MIN` 在 MessageList 顶部） |
@@ -86,7 +86,6 @@ pi-web-ui/
 | `TopBar.tsx` / `FooterBar.tsx` | 顶栏（模型/思考强度/声音/新对话/视图切换）、底栏（上下文/成本/工作目录） |
 | `Dialog.tsx` | 扩展 `ui.select/confirm/input` → 浏览器弹窗 |
 | `ModelConfigModal.tsx` / `PiSetupModal.tsx` | models.json 管理 / 首次配置引导 |
-| `DropOverlay.tsx` | 拖放提示层（pointer-events none 全窗覆盖，指示复制/引用） |
 | `Markdown.tsx` / `Dropdown.tsx` / `copy-button.tsx` / `SoundSettings.tsx` | 通用件 |
 
 ## 4. 核心架构（改代码前必读）
@@ -125,25 +124,10 @@ pi-web-ui/
   路径按**该客户端的会话 cwd**（打开的项目）解析，而非服务启动目录——两者可能不一致；
   `clientId` 缺失或会话不存在时回退到服务启动 `CWD`。路径校验统一走 `workspacePath()`（agent-service 导出）。
 - 行号语义：**尾随换行不产生空行**（`countLines` 已修正），前后端 split 逻辑必须一致。
-
-### 终端
-### 拖放上传（OS 文件管理器 → 页面）
-
-- **机制**：浏览器拿不到文件绝对路径，所以走 HTTP 上传。`POST /api/upload`
-  （`server/index.ts`）：body 为原始字节流（不经 WS，大文件不占 socket），
-  query `clientId` + `destDir`（工作区相对目录，"" = 工作区根），header
-  `X-File-Name` / `X-File-Rel-Path`（URI 编码）。路径全部过 `workspacePath()`
-  校验；目标目录自动 `mkdir -p`；重名自动加 ` (1)` 后缀不覆盖；返回
-  `{ ok, path, name, size }`。
-- **拖到右栏文件面板**（`RightPanel.tsx`）：复制到当前目录或悬停的文件夹行
-  （行高亮 `.file-item.dir.drop-target`），完成后 `list_files` 刷新。
-- **拖到对话区/输入框**（`App.tsx` 的 `<main>`）：上传到工作区内的
-  `.pi-web/uploads/`（已被 gitignore）暂存，再把顶层拖入项（文件或文件夹）
-  作为 reference 附件加进输入框；提示文案见 i18n `drop*` key。
-- 目录拖入用 `webkitGetAsEntry()` 递归遍历（`web/src/upload.ts`），目录结构
-  通过 `X-File-Rel-Path` 在服务端重建；无 entry API 时回退 `dt.files`。
-- 全局 window `dragover`/`drop` preventDefault 阻止浏览器直接打开文件；
-  提示层 `DropOverlay` 全窗覆盖但 `pointer-events: none`，drop 落在下层区域。
+- **下载按钮**（`web/src/download.ts`）：不用 `<a download href>`（Chrome Safe Browsing
+  会拦截非 HTTPS 源的无信誉文件类型如 .zip/.exe，报「无法下载/联系你的组织」），而是
+  fetch → blob → objectURL 触发保存；>200MB 回退原生导航流式下载；失败 toast 显示服务端
+  错误正文（`downloadFailed` i18n key）。`download-test.mjs` 覆盖回归。
 
 ### 终端
 
@@ -155,6 +139,7 @@ pi-web-ui/
   或在自己已授权的终端里前台运行）。
 
 ### 其他桥接
+
 ### 多对话并发
 
 - 每客户端 `convs: Map<convId, Conversation>`，**每个对话一个独立 `AgentSessionRuntime`**：
@@ -168,7 +153,6 @@ pi-web-ui/
 - 行为不变的部分：`switch_session`（恢复持久会话）替换**当前**对话的 runtime；`set_cwd` 只重建**当前**对话；
   `edit_message` 在**当前**对话内 fork；`dispose` 遍历销毁全部对话；attachSink 重连时补推 conversations。
 - 前端：左栏「打开的对话」区（>1 个时显示，活跃高亮、流式绿点），MessageList 以 conversationId 为 key 强制切换重挂载。
-
 
 - 扩展的 `setWidget/setStatus/notify/select/confirm/input` → `widgets/statuses/notice/dialog` 消息；
   对话框经 `dialog_response` 回传，Esc 视为取消。

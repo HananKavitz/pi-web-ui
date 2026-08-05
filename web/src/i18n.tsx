@@ -87,6 +87,7 @@ const zh = {
 	/* left panel */
 	recentProjects: "最近项目",
 	openConversations: "打开的对话",
+	historySessions: "历史对话",
 	streaming: "进行中…",
 	noHistory: "还没有历史对话",
 	current: "当前",
@@ -134,15 +135,7 @@ const zh = {
 	referenceTip: "仅引用路径（AI 按需读取）",
 	previewFile: "预览",
 	downloadFile: "下载文件",
-	/* drag & drop (OS file manager → app) */
-	dropCopyHere: "复制到这里",
-	dropCopyTo: "复制到 {path}",
-	dropReference: "引用文件",
-	dropCopied: "已复制 {n} 个文件到 {path}",
-	dropReferenced: "已引用 {path}",
-	dropReferencedN: "已引用 {n} 项，已加入输入框",
-	dropUploadError: "上传失败：{error}",
-	dropNoFiles: "未检测到可上传的文件",
+	downloadFailed: "下载失败：{error}",
 
 	/* file preview */
 	selectLinesHint: "点击选择行；拖拽或 Shift+点击选择范围",
@@ -385,6 +378,7 @@ const en: Record<keyof typeof zh, string> = {
 	/* left panel */
 	recentProjects: "Recent projects",
 	openConversations: "Open chats",
+	historySessions: "History",
 	streaming: "Streaming…",
 	noHistory: "No previous chats",
 	current: "Current",
@@ -432,15 +426,7 @@ const en: Record<keyof typeof zh, string> = {
 	referenceTip: "Reference path only (AI reads on demand)",
 	previewFile: "Preview",
 	downloadFile: "Download file",
-	/* drag & drop (OS file manager → app) */
-	dropCopyHere: "Copy here",
-	dropCopyTo: "Copy to {path}",
-	dropReference: "Reference file",
-	dropCopied: "Copied {n} file(s) to {path}",
-	dropReferenced: "Referenced {path}",
-	dropReferencedN: "Referenced {n} item(s) — added to the input",
-	dropUploadError: "Upload failed: {error}",
-	dropNoFiles: "No files to upload",
+	downloadFailed: "Download failed: {error}",
 
 	/* file preview */
 	selectLinesHint: "Click a line to select; drag or Shift+click for a range",

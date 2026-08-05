@@ -1933,8 +1933,18 @@ export class ClientSession {
 	/** Switch the ACTIVE conversation without interrupting any other chat. */
 	async switchConversation(id: string): Promise<void> {
 		if (!this.convs.has(id) || id === this.activeId) return;
+		const prevCwd = this.cwd;
 		this.activeId = id;
 		this.cwd = this.conv.cwd;
+		// Cross-directory jump: make the workspace switch explicit so the user
+		// isn't surprised when the file tree / footer / history all change.
+		if (this.cwd !== prevCwd) {
+			this.emit({
+				type: "notice",
+				level: "info",
+				text: `已切换到工作目录：${this.cwd}`,
+			});
+		}
 		this.webUi.refresh();
 		this.emitConversations();
 		// Workspace-bound panels (session list / file tree / commands) follow
