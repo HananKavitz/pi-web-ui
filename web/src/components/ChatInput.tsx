@@ -57,7 +57,10 @@ export function ChatInput({
 
 	const submit = () => {
 		const trimmed = text.trim();
-		if (!trimmed || !connected || streaming) return;
+		if (!trimmed || !connected) return;
+		// While the agent is streaming, the server queues this prompt (as a
+		// followUp) and delivers it when the current run finishes — see
+		// AgentService.prompt() in agent-service.ts.
 		if (
 			send({
 				type: "prompt",
@@ -151,14 +154,26 @@ export function ChatInput({
 				/>
 				<div className="inputbox-actions">
 					{streaming ? (
-						<button
-							type="button"
-							className="btn stop"
-							title={t("stopAgent")}
-							onClick={() => send({ type: "abort" })}
-						>
-							<FiSquare /> {t("stop")}
-						</button>
+						<>
+							{text.trim() !== "" && (
+								<button
+									type="button"
+									className="btn send"
+									title={t("sendTip")}
+									onClick={submit}
+								>
+									<FiSend />
+								</button>
+							)}
+							<button
+								type="button"
+								className="btn stop"
+								title={t("stopAgent")}
+								onClick={() => send({ type: "abort" })}
+							>
+								<FiSquare /> {t("stop")}
+							</button>
+						</>
 					) : (
 						<button
 							type="button"
