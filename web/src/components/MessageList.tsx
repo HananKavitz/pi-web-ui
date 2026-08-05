@@ -157,11 +157,7 @@ export function MessageList({ state, liveOutputs, onEdit }: MessageListProps) {
 						// show in the collapsed row either.
 						if (m.role === "toolResult") return null;
 						return (
-							<CollapsedMessage
-								key={m.id}
-								message={m}
-								onExpand={expand}
-							/>
+							<CollapsedMessage key={m.id} message={m} onExpand={expand} />
 						);
 					}
 					return (

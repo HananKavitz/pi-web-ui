@@ -23,7 +23,10 @@ writeFileSync(
 );
 // Tiny attachment files — each becomes one custom "file" message (aside).
 for (let i = 1; i <= 35; i++) {
-	writeFileSync(join(workdir, `seed-${String(i).padStart(2, "0")}.txt`), `seed content ${i}\n`);
+	writeFileSync(
+		join(workdir, `seed-${String(i).padStart(2, "0")}.txt`),
+		`seed content ${i}\n`,
+	);
 }
 writeFileSync(
 	join(agentDir, "models.json"),
@@ -135,7 +138,9 @@ async function main() {
 		executablePath:
 			"/Users/c/Library/Caches/ms-playwright/chromium-1228/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
 	});
-	const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+	const page = await browser.newPage({
+		viewport: { width: 1400, height: 900 },
+	});
 	const consoleErrors = [];
 	page.on("console", (m) => {
 		if (m.type() === "error") consoleErrors.push(m.text());
@@ -156,10 +161,7 @@ async function main() {
 	const collapsed = page.locator(".msg-collapsed");
 	const full = page.locator(".msg");
 	check("old messages render collapsed", (await collapsed.count()) > 0);
-	check(
-		"recent messages stay fully rendered",
-		(await full.count()) >= 15,
-	);
+	check("recent messages stay fully rendered", (await full.count()) >= 15);
 	const firstCollapsedPreview = (await collapsed.first().textContent()) ?? "";
 	check(
 		"collapsed row shows a text preview",
@@ -172,19 +174,20 @@ async function main() {
 		"attachment messages collapse with file-name preview",
 		(await attachmentRow.count()) > 0,
 	);
-	check(
-		"collapsed row offers 展开",
-		firstCollapsedPreview.includes("展开"),
-	);
+	check("collapsed row offers 展开", firstCollapsedPreview.includes("展开"));
 
 	// -- expand on click ------------------------------------------------------
 	const beforeCount = await page.locator(".msg-collapsed").count();
 	await collapsed.first().click();
 	await page.waitForSelector(".msg .msg-collapse-btn", { timeout: 5000 });
 	const afterCount = await page.locator(".msg-collapsed").count();
-	check("clicked row expanded (one less collapsed row)", afterCount === beforeCount - 1);
+	check(
+		"clicked row expanded (one less collapsed row)",
+		afterCount === beforeCount - 1,
+	);
 	await page.waitForSelector(".msg .msg-text", { timeout: 5000 });
-	const expandedText = (await page.locator(".msg .msg-text").first().textContent()) ?? "";
+	const expandedText =
+		(await page.locator(".msg .msg-text").first().textContent()) ?? "";
 	check(
 		"expanded content rendered (question text visible)",
 		expandedText.includes("请总结这些文件"),
@@ -194,12 +197,44 @@ async function main() {
 		.first()
 		.textContent()
 		.catch(() => null);
-	check("expanded message shows 收起 button", collapseBtn?.includes("收起") ?? false);
+	check(
+		"expanded message shows 收起 button",
+		collapseBtn?.includes("收起") ?? false,
+	);
 
 	// -- collapse again -------------------------------------------------------
 	await page.locator(".msg .msg-collapse-btn").first().click();
 	await page.waitForSelector(".msg-collapsed", { timeout: 5000 });
 	check("收起 collapses the message back", (await collapsed.count()) > 0);
+
+	// -- panel layout: projects pinned above the scrolling session list --------
+	const projectsBox = await page
+		.locator(".panel-left .panel-projects")
+		.boundingBox();
+	const bodyBox = await page.locator(".panel-left .panel-body").boundingBox();
+	check(
+		"projects block sits above the session list",
+		!!projectsBox &&
+			!!bodyBox &&
+			projectsBox.y + projectsBox.height <= bodyBox.y + 2,
+	);
+	const sepWidth = await page
+		.locator(".panel-left .panel-projects")
+		.evaluate((el) => parseFloat(getComputedStyle(el).borderBottomWidth));
+	check("projects block has a clear separator line", sepWidth >= 2);
+	// Scroll the session list to the bottom — the projects must not move.
+	await page.evaluate(() => {
+		const el = document.querySelector(".panel-left .panel-body");
+		el.scrollTop = el.scrollHeight;
+	});
+	await sleep(150);
+	const projectsBoxAfter = await page
+		.locator(".panel-left .panel-projects")
+		.boundingBox();
+	check(
+		"projects stay visible after scrolling sessions to bottom",
+		!!projectsBoxAfter && Math.abs(projectsBoxAfter.y - projectsBox.y) < 1,
+	);
 
 	// -- no console errors ----------------------------------------------------
 	check("no page errors", consoleErrors.length === 0);

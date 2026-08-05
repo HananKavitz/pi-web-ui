@@ -87,7 +87,9 @@ export const CollapsedMessage = memo(function CollapsedMessage({
 				)}
 			</span>
 			{message.timestamp ? (
-				<span className="msg-collapsed-time">{formatTime(message.timestamp)}</span>
+				<span className="msg-collapsed-time">
+					{formatTime(message.timestamp)}
+				</span>
 			) : null}
 			<span className="msg-collapsed-action">
 				<FiChevronDown /> {t("expandMsg")}

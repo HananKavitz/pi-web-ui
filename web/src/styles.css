@@ -304,10 +304,17 @@ body {
 
 /* ------------------------------------------------------- recent projects */
 
-.panel-section {
-	border-bottom: 1px solid var(--border-soft);
-	padding-bottom: 6px;
-	margin-bottom: 6px;
+/*
+ * Recent-project list: pinned ABOVE the scrolling session list (independent
+ * scroll — scrolling sessions never hides the projects), with a clear
+ * separator line underneath. Scrolls internally only when many projects.
+ */
+.panel-projects {
+	flex-shrink: 0;
+	max-height: 45%;
+	overflow-y: auto;
+	padding: 6px 6px 8px;
+	border-bottom: 2px solid var(--border);
 }
 
 .panel-section-title {
