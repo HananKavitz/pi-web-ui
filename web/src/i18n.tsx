@@ -82,6 +82,8 @@ const zh = {
 	placeholderConnecting: "正在连接服务器…",
 	stopAgent: "停止智能体",
 	stop: "停止",
+	supplement: "补充",
+	supplementTip: "当前回复完成后立即发送",
 	sendTip: "发送（Enter）",
 
 	/* left panel */
@@ -373,6 +375,8 @@ const en: Record<keyof typeof zh, string> = {
 	placeholderConnecting: "Connecting to server…",
 	stopAgent: "Stop agent",
 	stop: "Stop",
+	supplement: "Follow-up",
+	supplementTip: "Send immediately after the current reply finishes",
 	sendTip: "Send (Enter)",
 
 	/* left panel */

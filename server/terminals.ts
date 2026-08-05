@@ -177,7 +177,10 @@ function shellEnv(): Record<string, string> {
 // and node-pty throws the generic "posix_spawnp failed". Locally-built
 // copies (build/Release) are fine; every `npm install` that picks the prebuild
 // — e.g. `npm i -g pi-web-ui`, which is what system-service installs run — is
-// broken until the bit is restored. Self-heal at startup, best-effort.
+// broken until the bit is restored. Self-heal at startup AND lazily before
+// every spawn (an `npm i -g` while the server is running replaces the helper
+// under the running process, so the startup-only repair misses it).
+// Best-effort: a read-only node_modules just keeps the old failure.
 
 const require = createRequire(import.meta.url);
 
@@ -350,6 +353,9 @@ export class TerminalManager {
 			this.fail(id, `目录不存在：${abs}`);
 			return false;
 		}
+		// node-pty's spawn-helper may have lost its +x bit since the last repair
+		// (e.g. a global npm install replaced the helper while this server runs).
+		repairSpawnHelperPermissions();
 		let pty: IPty;
 		try {
 			pty = spawn(SHELL, SHELL_ARGS, {

@@ -2691,6 +2691,18 @@ body {
 .btn.send:hover:not(:disabled) {
 	filter: brightness(1.12);
 }
+
+/* 补充: queue a message that sends the moment the current reply finishes. */
+.btn.supplement {
+	background: transparent;
+	border-color: rgba(139, 92, 246, 0.5);
+	color: var(--accent);
+}
+.btn.supplement:hover:not(:disabled) {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: #fff;
+}
 .btn.stop {
 	background: var(--red-soft);
 	border-color: rgba(248, 113, 113, 0.4);

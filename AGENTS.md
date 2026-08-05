@@ -79,7 +79,7 @@ pi-web-ui/
 | `FilePreview.tsx` | 文件预览弹窗：行号、点选/拖拽/Shift 选区、添加到对话（lines 附件） |
 | `LeftPanel.tsx` | 左栏：最近项目（点击切换 cwd）+ 打开的对话（>1 个时显示，每条带所属项目标签，跨目录切换发 notice）+ 分割线 + 历史对话列表 |
 | `RightPanel.tsx` | 文件树浏览（list_files），文件名点击→预览，📎/🔗/👁 附件按钮 |
-| `ChatInput.tsx` | 输入框 + 附件 chips（inline/reference/lines 三色） |
+| `ChatInput.tsx` | 输入框 + 附件 chips（inline/reference/lines 三色）；回复中显示「补充」按钮（followUp 排队，回复完成立即发送）+「停止」 |
 | `Message.tsx` / `MessageList.tsx` | 消息渲染：附件卡片（`stripFileWrapper` 剥 `<file>` 包装）、流式光标、tool 结果关联；超过 30 条后旧消息折叠为摘要行（`CollapsedMessage`，惰性渲染，点击展开，常量 `KEEP_RECENT`/`COLLAPSE_MIN` 在 MessageList 顶部） |
 | `ToolCallBlock.tsx` / `ThinkingBlock.tsx` / `BashBlock` | 工具调用卡片、思考块、bash 输出 |
 | `TerminalPanel.tsx` / `TermXterm.tsx` | 终端视图 + xterm 实例桥接 |

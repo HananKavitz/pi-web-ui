@@ -158,11 +158,11 @@ export function ChatInput({
 							{text.trim() !== "" && (
 								<button
 									type="button"
-									className="btn send"
-									title={t("sendTip")}
+									className="btn supplement"
+									title={t("supplementTip")}
 									onClick={submit}
 								>
-									<FiSend />
+									<FiSend /> {t("supplement")}
 								</button>
 							)}
 							<button
