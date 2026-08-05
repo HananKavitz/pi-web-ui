@@ -1,5 +1,7 @@
 # pi-web-ui
 
+**English** | [简体中文](README.zh-CN.md)
+
 A web chat interface for the [pi coding agent](https://pi.dev), built directly on
 the **pi SDK** ([`@earendil-works/pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)) —
 no subprocess, no JSON-RPC shim. The agent runs in the server process and streams
@@ -139,13 +141,20 @@ pi-web-ui server uninstall             # remove the service entirely
 - **Linux** → systemd unit (auto-sudo): writes
   `/etc/systemd/system/pi-web-ui.service` and runs `systemctl enable --now`,
   logs via `journalctl -u pi-web-ui -f`.
-- **Windows** → Task Scheduler (no admin): creates a user task that starts at
-  logon (same as a launchd agent). It runs a PowerShell launcher generated at
+- **Windows** → Task Scheduler: creates a user task that starts at logon
+  (same as a launchd agent; usually no admin needed, but on some machines
+  `schtasks /Create` requires an elevated PowerShell — if `install` fails
+  with `ERROR: Access is denied`, rerun it from an admin shell). It runs a
+  PowerShell launcher generated at
   `%APPDATA%\pi-web-ui\pi-web-ui.ps1` via `powershell.exe -WindowStyle
   Hidden` — no black console window stays open, so there's nothing to
   accidentally close/kill. The launcher sets env, cd's to the workspace,
-  launches node, appends logs to `%USERPROFILE%\pi-web-ui.log`). The task XML
-  is saved next to it; restarts on failure.
+  launches node, appends logs to `%USERPROFILE%\pi-web-ui.log`. The task XML
+  is saved next to it; restarts on failure. **Always pass `--cwd`
+  explicitly** — the task inherits the installing shell's directory, and an
+  admin shell defaults to `C:\WINDOWS\system32`, which the non-elevated
+  task cannot write to (EPERM at startup). See
+  [Windows — Task Scheduler](#windows--task-scheduler) for details.
 - Options: `--port` (default 8787 or `$PORT`), `--cwd` (default `$PI_WEB_CWD`
   or the current directory), `--data-dir` (sessions), `--name` (custom service
   name; on macOS the label is `com.xingshuyin.pi-web-ui`, custom names become
@@ -327,7 +336,7 @@ launchctl bootout gui/$(id -u)/com.xingshuyin.pi-web-ui   # stop + remove auto-s
 
 ### Windows — Task Scheduler
 
-Easiest path (no admin, generates everything):
+Easiest path (generates everything, no manual XML editing):
 
 ```bat
 npm i -g pi-web-ui
@@ -342,7 +351,8 @@ What it does: writes `%APPDATA%\pi-web-ui\pi-web-ui.ps1` (a PowerShell launcher
 that sets `PORT`/`PI_WEB_CWD`, cd's to the workspace, launches node and
 appends output to `%USERPROFILE%\pi-web-ui.log`) plus the Task Scheduler XML,
 then registers a **logon** task (`schtasks /Create /XML` — the task runs when
-you log in, same as a launchd agent; no admin needed). The task invokes
+you log in, same as a launchd agent; usually no admin needed, but see the
+troubleshooting note below if you get access denied). The task invokes
 `powershell.exe -WindowStyle Hidden`, so the server runs with **no black
 console window** — there is nothing to accidentally close or kill. Preview
 both generated files without installing: `pi-web-ui server install --print`.
@@ -351,6 +361,27 @@ Manual alternative with `deploy/pi-web-ui-task.xml`: edit the paths, save the
 file as **UTF-16 LE** (schtasks requires it), then
 `schtasks /Create /TN "pi-web-ui" /XML pi-web-ui-task.xml /F` and
 `schtasks /Run /TN "pi-web-ui"`.
+
+> **Windows troubleshooting**
+>
+> - **`install` fails with `ERROR: Access is denied` (错误: 拒绝访问)** — on
+>   some machines Task Scheduler refuses to let a non-elevated token create
+>   tasks (deleting your own task with `schtasks /Delete` still works, which
+>   is why `server uninstall` succeeds). Fix: run
+>   `pi-web-ui server install` from an **elevated (admin) PowerShell**.
+> - **Always pass `--cwd` explicitly, and point it at a user-writable
+>   directory.** The task inherits the installing shell's current directory
+>   as its working directory. Installing from an elevated shell without
+>   `--cwd` registers the task with `C:\WINDOWS\system32`, and the server
+>   then fails at startup with
+>   `EPERM: operation not permitted, mkdir 'C:\WINDOWS\system32\.pi-web\sessions\...'`
+>   because the logon task runs with a least-privilege token that cannot
+>   write under `system32`. Use e.g. `--cwd C:\Users\<you>` (sessions then
+>   go to `C:\Users\<you>\.pi-web`).
+> - **Fix an already-broken task** (task created with the wrong directory):
+>   `pi-web-ui server uninstall`, then
+>   `pi-web-ui server install --cwd C:\Users\<you>` from an elevated shell.
+>   Rerunning `install` with new options also regenerates the task in place.
 
 > **Boot-start without login?** A logon task needs an interactive session, just
 > like a launchd agent. For headless/always-on Windows use Docker (see above).
