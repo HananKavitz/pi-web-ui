@@ -13,14 +13,15 @@
  *   PI_CODING_AGENT_DIR  pi config dir (auth/models/skills) — passed to the SDK
  */
 import { existsSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import express from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { VERSION } from "@earendil-works/pi-coding-agent";
-import { AgentService } from "./agent-service.js";
+import { AgentService, previewKind } from "./agent-service.js";
 import type { ClientMessage, ServerMessage } from "./protocol.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -33,6 +34,38 @@ app.use(express.json({ limit: "10mb" }));
 
 app.get("/api/health", (_req, res) => {
 	res.json({ ok: true, piVersion: VERSION, cwd: CWD, pid: process.pid });
+});
+
+/**
+ * Stream a workspace file for the media preview (image/video). Path is
+ * validated against the workspace root and only image/video kinds are served —
+ * text goes over the WebSocket, and exe/jar/etc. are never exposed here.
+ * express's sendFile handles Range requests, so video seeking works.
+ */
+app.get("/api/file", async (req, res) => {
+	try {
+		const raw = typeof req.query.path === "string" ? req.query.path : "";
+		const abs = resolve(CWD, raw);
+		const rel = relative(CWD, abs);
+		if (rel.startsWith("..") || rel.includes(`${sep}..`)) {
+			res.status(400).end("path outside workspace");
+			return;
+		}
+		const name = basename(abs);
+		const kind = previewKind(name);
+		if (kind !== "image" && kind !== "video") {
+			res.status(400).end("not a previewable media file");
+			return;
+		}
+		const st = await stat(abs);
+		if (!st.isFile()) {
+			res.status(400).end("not a file");
+			return;
+		}
+		res.sendFile(abs);
+	} catch {
+		res.status(404).end("not found");
+	}
 });
 
 // Production: serve the built frontend from web/dist. Resolve relative to this

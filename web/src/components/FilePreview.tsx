@@ -139,6 +139,10 @@ export function FilePreview({
 	const selCount = sel ? sel.end - sel.start + 1 : 0;
 	const isBinary = loaded?.binary ?? false;
 	const truncated = loaded?.truncated ?? false;
+	// Preview category from the server ("text" while loading). Media kinds are
+	// streamed over the /api/file HTTP endpoint; "none" is never previewable.
+	const kind = loaded?.kind ?? "text";
+	const mediaUrl = (p: string) => `/api/file?path=${encodeURIComponent(p)}`;
 
 	return (
 		<div
@@ -154,18 +158,23 @@ export function FilePreview({
 					</span>
 					<span className="fp-path">{file.path}</span>
 					<span className="fp-meta">
-						{loaded && !isBinary && t("fileLines", { n: lineCount })}
+						{loaded &&
+							kind === "text" &&
+							!isBinary &&
+							t("fileLines", { n: lineCount })}
 						{loaded && ` · ${formatSize(loaded.size)}`}
 					</span>
 					<span className="fp-head-actions">
-						<button
-							type="button"
-							className="fp-attach inline"
-							data-tip={t("attachInlineTip")}
-							onClick={() => onAttach(file.path, file.name, "inline")}
-						>
-							<FiPlus />
-						</button>
+						{kind !== "video" && kind !== "none" && (
+							<button
+								type="button"
+								className="fp-attach inline"
+								data-tip={t("attachInlineTip")}
+								onClick={() => onAttach(file.path, file.name, "inline")}
+							>
+								<FiPlus />
+							</button>
+						)}
 						<button
 							type="button"
 							className="fp-attach ref"
@@ -185,21 +194,50 @@ export function FilePreview({
 					</span>
 				</div>
 
-				{truncated && !isBinary && (
+				{truncated && kind === "text" && !isBinary && (
 					<div className="fp-notice">{t("previewTruncated")}</div>
 				)}
 
 				{loading && !loaded && <div className="fp-empty">{t("loading")}</div>}
 
-				{!loading && isBinary && (
+				{!loading && kind === "none" && (
+					<div className="fp-empty">{t("previewNotSupported")}</div>
+				)}
+
+				{!loading && kind === "image" && (
+					<div className="fp-media-wrap">
+						<img
+							className="fp-media"
+							src={mediaUrl(file.path)}
+							alt={file.name}
+						/>
+					</div>
+				)}
+
+				{!loading && kind === "video" && (
+					<div className="fp-media-wrap">
+						<video
+							className="fp-media"
+							src={mediaUrl(file.path)}
+							controls
+							preload="metadata"
+						/>
+					</div>
+				)}
+
+				{!loading && kind === "text" && isBinary && (
 					<div className="fp-empty">{t("binaryFile")}</div>
 				)}
 
-				{!loading && !isBinary && loaded && lines.length === 0 && (
-					<div className="fp-empty">{t("emptyFile")}</div>
-				)}
+				{!loading &&
+					kind === "text" &&
+					!isBinary &&
+					loaded &&
+					lines.length === 0 && (
+						<div className="fp-empty">{t("emptyFile")}</div>
+					)}
 
-				{!loading && !isBinary && lines.length > 0 && (
+				{!loading && kind === "text" && !isBinary && lines.length > 0 && (
 					<div
 						className={`fp-code ${dragging ? "dragging" : ""}`}
 						onMouseDown={(e) => {
@@ -238,42 +276,46 @@ export function FilePreview({
 				)}
 
 				<div className="fp-foot">
-					<span className="fp-hint">
-						{sel
-							? t("selectedRange", {
-									n: selCount,
-									start: sel.start,
-									end: sel.end,
-								})
-							: t("selectLinesHint")}
-					</span>
-					<div className="fp-actions">
-						<button
-							type="button"
-							className="btn"
-							disabled={lines.length === 0}
-							onClick={selectAll}
-						>
-							{t("selectAll")}
-						</button>
-						<button
-							type="button"
-							className="btn"
-							disabled={!sel}
-							onClick={() => setSel(null)}
-						>
-							{t("clearSelection")}
-						</button>
-						<button
-							type="button"
-							className="btn primary"
-							disabled={!sel || isBinary}
-							onClick={addToChat}
-						>
-							{added ? <FiCheck /> : null}
-							{added ? t("addedToChat") : t("addToChat")}
-						</button>
-					</div>
+					{kind === "text" && (
+						<>
+							<span className="fp-hint">
+								{sel
+									? t("selectedRange", {
+											n: selCount,
+											start: sel.start,
+											end: sel.end,
+										})
+									: t("selectLinesHint")}
+							</span>
+							<div className="fp-actions">
+								<button
+									type="button"
+									className="btn"
+									disabled={lines.length === 0}
+									onClick={selectAll}
+								>
+									{t("selectAll")}
+								</button>
+								<button
+									type="button"
+									className="btn"
+									disabled={!sel}
+									onClick={() => setSel(null)}
+								>
+									{t("clearSelection")}
+								</button>
+								<button
+									type="button"
+									className="btn primary"
+									disabled={!sel || isBinary}
+									onClick={addToChat}
+								>
+									{added ? <FiCheck /> : null}
+									{added ? t("addedToChat") : t("addToChat")}
+								</button>
+							</div>
+						</>
+					)}
 				</div>
 			</div>
 		</div>

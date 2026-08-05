@@ -190,6 +190,11 @@ export interface FileEntry {
 	/** Path relative to the workspace root ('' for the root itself). */
 	path: string;
 	type: "file" | "dir";
+	/**
+	 * Preview category (files only; undefined for dirs). "none" files are
+	 * never previewed — the UI doesn't open them and read_file refuses them.
+	 */
+	kind?: "image" | "video" | "text" | "none";
 }
 
 export interface FileListing {
@@ -202,6 +207,11 @@ export interface FileListing {
 export interface FileContent {
 	path: string;
 	name: string;
+	/**
+	 * Preview category: media kinds render via the /api/file HTTP endpoint
+	 * (text stays empty); "none" means not previewable.
+	 */
+	kind: "image" | "video" | "text" | "none";
 	text: string;
 	truncated: boolean;
 	binary: boolean;
@@ -270,6 +280,7 @@ export type ServerMessage =
 			type: "file_content";
 			path: string;
 			name: string;
+			kind: "image" | "video" | "text" | "none";
 			text: string;
 			truncated: boolean;
 			binary: boolean;

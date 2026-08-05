@@ -113,6 +113,7 @@ const zh = {
 	previewTruncated: "⚠ 文件过大，仅预览前 512KB",
 	previewLinesTruncated: "… 文件行数过多，仅显示前 {n} 行",
 	binaryFile: "二进制文件，无法预览",
+	previewNotSupported: "该类型文件不支持预览（仅图片 / 视频 / 文本）",
 	emptyFile: "（空文件）",
 
 	/* dialog */
@@ -368,6 +369,8 @@ const en: Record<keyof typeof zh, string> = {
 	previewTruncated: "⚠ File too large — previewing the first 512KB",
 	previewLinesTruncated: "… too many lines — showing the first {n}",
 	binaryFile: "Binary file — preview not available",
+	previewNotSupported:
+		"This file type can't be previewed (only images / videos / text)",
 	emptyFile: "(empty file)",
 
 	/* dialog */

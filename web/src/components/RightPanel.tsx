@@ -148,21 +148,31 @@ export function RightPanel({
 								<div key={e.path} className="file-item file">
 									<button
 										type="button"
-										className="file-name"
-										title={`${e.path} — ${t("previewFile")}`}
-										onClick={() => onPreview(e.path, e.name)}
+										className={`file-name ${e.kind === "none" ? "no-preview" : ""}`}
+										title={`${e.path} — ${
+											e.kind === "none"
+												? t("previewNotSupported")
+												: t("previewFile")
+										}`}
+										onClick={
+											e.kind === "none"
+												? undefined
+												: () => onPreview(e.path, e.name)
+										}
 									>
 										<FiFile className="file-icon" />
 										<span className="file-name-text">{e.name}</span>
 									</button>
-									<button
-										type="button"
-										className="file-attach preview"
-										data-tip={t("previewFile")}
-										onClick={() => onPreview(e.path, e.name)}
-									>
-										<FiEye />
-									</button>
+									{e.kind !== "none" && (
+										<button
+											type="button"
+											className="file-attach preview"
+											data-tip={t("previewFile")}
+											onClick={() => onPreview(e.path, e.name)}
+										>
+											<FiEye />
+										</button>
+									)}
 									<button
 										type="button"
 										className="file-attach inline"

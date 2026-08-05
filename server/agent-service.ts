@@ -51,6 +51,172 @@ const WIDGET_WIDTH = 80;
 const MAX_PREVIEW_BYTES = 512 * 1024;
 
 // ---------------------------------------------------------------------------
+// Preview kind classification. The preview panel only opens image / video /
+// text-editable files; everything else (exe, jar, archives, …) is refused so
+// it is never read or sent to the browser. Media files are served over the
+// /api/file HTTP endpoint instead of the WebSocket, so they are classified
+// here but never read into the snapshot path.
+// ---------------------------------------------------------------------------
+
+export type PreviewKind = "image" | "video" | "text" | "none";
+
+const PREVIEW_IMAGE_EXTS = new Set([
+	"png",
+	"jpg",
+	"jpeg",
+	"gif",
+	"webp",
+	"svg",
+	"bmp",
+	"ico",
+	"avif",
+	"jfif",
+	"tif",
+	"tiff",
+]);
+const PREVIEW_VIDEO_EXTS = new Set([
+	"mp4",
+	"webm",
+	"mov",
+	"mkv",
+	"avi",
+	"m4v",
+	"ogv",
+	"mpg",
+	"mpeg",
+	"wmv",
+	"flv",
+]);
+const PREVIEW_TEXT_EXTS = new Set([
+	// code
+	"ts",
+	"tsx",
+	"js",
+	"jsx",
+	"mjs",
+	"cjs",
+	"jsm",
+	"es6",
+	"vue",
+	"svelte",
+	"py",
+	"pyw",
+	"ipynb",
+	"go",
+	"rs",
+	"c",
+	"h",
+	"cpp",
+	"hpp",
+	"cc",
+	"cxx",
+	"hh",
+	"csh",
+	"java",
+	"kt",
+	"kts",
+	"scala",
+	"sc",
+	"cs",
+	"fs",
+	"fsx",
+	"fsi",
+	"sh",
+	"bash",
+	"zsh",
+	"fish",
+	"bat",
+	"cmd",
+	"ps1",
+	"psd1",
+	"psm1",
+	"rb",
+	"php",
+	"pl",
+	"pm",
+	"tcl",
+	"lua",
+	"r",
+	"rmd",
+	"sql",
+	"swift",
+	"dart",
+	"groovy",
+	"gradle",
+	"tf",
+	"tfvars",
+	"hcl",
+	"nim",
+	"zig",
+	"v",
+	"vala",
+	"d",
+	"clj",
+	"cljs",
+	"cljc",
+	"edn",
+	"ex",
+	"exs",
+	"erl",
+	"hrl",
+	"ml",
+	"mli",
+	// markup / config / data
+	"json",
+	"jsonc",
+	"json5",
+	"md",
+	"mdx",
+	"markdown",
+	"html",
+	"htm",
+	"xhtml",
+	"css",
+	"scss",
+	"sass",
+	"less",
+	"styl",
+	"xml",
+	"dtd",
+	"yaml",
+	"yml",
+	"toml",
+	"ini",
+	"cfg",
+	"conf",
+	"properties",
+	"env",
+	"log",
+	"txt",
+	"text",
+	"csv",
+	"tsv",
+	"lock",
+	"sqlite",
+	"graphql",
+	"gql",
+	"proto",
+	"prisma",
+	"asm",
+	"s",
+]);
+
+/**
+ * Classify a file name into its preview category. Files with no extension
+ * (README, Makefile, .gitignore, …) are treated as text. Everything not in an
+ * allowlist (exe, jar, dll, zip, …) is "none" — never previewed.
+ */
+export function previewKind(name: string): PreviewKind {
+	const dot = name.lastIndexOf(".");
+	// A leading dot with nothing after it (.gitignore, .env) counts as no ext.
+	const ext = dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+	if (PREVIEW_IMAGE_EXTS.has(ext)) return "image";
+	if (PREVIEW_VIDEO_EXTS.has(ext)) return "video";
+	if (ext === "" || PREVIEW_TEXT_EXTS.has(ext)) return "text";
+	return "none";
+}
+
+// ---------------------------------------------------------------------------
 // Web UI context adapter — bridges extension UI calls (setWidget/notify) to the
 // browser. Extensions like rpiv-todo render a TUI widget via
 // `ui.setWidget(key, (tui, theme) => comp)`; we capture the component, render it
@@ -1512,11 +1678,20 @@ export class ClientSession {
 			const dirents = await fs.readdir(target, { withFileTypes: true });
 			const entries = dirents
 				.filter((d) => !IGNORED_ENTRIES.has(d.name))
-				.map((d) => ({
-					name: d.name,
-					path: rel === "" ? d.name : `${rel}/${d.name}`,
-					type: (d.isDirectory() ? "dir" : "file") as "dir" | "file",
-				}))
+				.map((d) => {
+					const entry: {
+						name: string;
+						path: string;
+						type: "dir" | "file";
+						kind?: PreviewKind;
+					} = {
+						name: d.name,
+						path: rel === "" ? d.name : `${rel}/${d.name}`,
+						type: (d.isDirectory() ? "dir" : "file") as "dir" | "file",
+					};
+					if (!d.isDirectory()) entry.kind = previewKind(d.name);
+					return entry;
+				})
 				.sort((a, b) =>
 					a.type === b.type
 						? a.name.localeCompare(b.name)
@@ -1570,14 +1745,46 @@ export class ClientSession {
 				});
 				return;
 			}
-			// Read only the first MAX_PREVIEW_BYTES so huge files can't exhaust
-			// memory or flood the socket.
+			const name = relPath.split("/").pop() ?? relPath;
+			const kind = previewKind(name);
+			// Not previewable (exe, jar, archives, …) — never read or sent.
+			if (kind === "none") {
+				this.emit({
+					type: "file_content",
+					path: rel,
+					name,
+					text: "",
+					truncated: false,
+					binary: true,
+					kind: "none",
+					lines: 0,
+					size: stat.size,
+				});
+				return;
+			}
+			// Media previews stream over the /api/file HTTP endpoint, so only
+			// metadata is sent here — the raw bytes never touch the socket.
+			if (kind === "image" || kind === "video") {
+				this.emit({
+					type: "file_content",
+					path: rel,
+					name,
+					text: "",
+					truncated: false,
+					binary: true,
+					kind,
+					lines: 0,
+					size: stat.size,
+				});
+				return;
+			}
+			// Text: read only the first MAX_PREVIEW_BYTES so huge files can't
+			// exhaust memory or flood the socket.
 			const handle = await fs.open(abs, "r");
 			try {
 				const buf = Buffer.alloc(Math.min(stat.size, MAX_PREVIEW_BYTES));
 				const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
 				const data = buf.subarray(0, bytesRead);
-				const name = relPath.split("/").pop() ?? relPath;
 				if (data.includes(0)) {
 					this.emit({
 						type: "file_content",
@@ -1586,6 +1793,7 @@ export class ClientSession {
 						text: "",
 						truncated: false,
 						binary: true,
+						kind: "text",
 						lines: 0,
 						size: stat.size,
 					});
@@ -1598,6 +1806,7 @@ export class ClientSession {
 					text: data.toString("utf8"),
 					truncated: bytesRead < stat.size,
 					binary: false,
+					kind: "text",
 					lines: countLines(data),
 					size: stat.size,
 				});

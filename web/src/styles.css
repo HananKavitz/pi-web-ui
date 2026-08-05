@@ -413,6 +413,12 @@ body {
 .file-name:hover {
 	color: var(--accent);
 }
+.file-name.no-preview {
+	cursor: default;
+}
+.file-name.no-preview:hover {
+	color: inherit;
+}
 .file-name-text {
 	flex: 1;
 	min-width: 0;
@@ -2997,6 +3003,23 @@ body {
 	padding: 6px 0;
 	user-select: none;
 	-webkit-user-select: none;
+}
+
+/* Media previews (image / video) fill the same body area as .fp-code. */
+.fp-media-wrap {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+	background: rgba(0, 0, 0, 0.22);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 12px;
+}
+.fp-media {
+	max-width: 100%;
+	max-height: 100%;
+	border-radius: 4px;
 }
 
 .fp-line {
