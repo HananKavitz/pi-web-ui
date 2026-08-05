@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import { FiChevronDown, FiChevronRight } from "react-icons/fi";
+import { FiChevronDown, FiChevronRight, FiEdit3 } from "react-icons/fi";
 import type {
 	UiBashBlock,
 	UiContentBlock,
@@ -64,6 +64,8 @@ interface MessageProps {
 	streaming: boolean;
 	/** True when this is the last rendered message (stream cursor + live blocks). */
 	isLast: boolean;
+	/** Edit-and-re-ask handler (user messages only). Stable identity — Message is memoized. */
+	onEdit?: (messageId: string, text: string) => void;
 }
 
 export const Message = memo(function Message({
@@ -72,8 +74,12 @@ export const Message = memo(function Message({
 	liveOutputs,
 	streaming,
 	isLast,
+	onEdit,
 }: MessageProps) {
 	const t = useT();
+	// Inline edit-and-re-ask editor (user messages only).
+	const [editing, setEditing] = useState(false);
+	const [draft, setDraft] = useState("");
 	// toolResult content is rendered inside its toolCall card — never standalone
 	// (otherwise the same output shows twice: formatted card + plain text).
 	if (message.role === "toolResult") return null;
@@ -84,6 +90,24 @@ export const Message = memo(function Message({
 	// Streaming bubble with no content yet (first token not arrived) — show a
 	// visible “thinking…” placeholder instead of an invisible empty bubble.
 	const isEmptyStreaming = streaming && isLast && message.content.length === 0;
+
+	const canEdit =
+		message.role === "user" && !streaming && !isEmptyStreaming && !!onEdit;
+	const startEdit = () => {
+		setDraft(
+			message.content
+				.map((b) => asText(b)?.text ?? "")
+				.filter(Boolean)
+				.join("\n"),
+		);
+		setEditing(true);
+	};
+	const submitEdit = () => {
+		const text = draft.trim();
+		if (!text) return;
+		onEdit?.(message.id, text);
+		setEditing(false);
+	};
 
 	return (
 		<div className={`msg msg-${message.role}`} data-role={message.role}>
@@ -101,33 +125,87 @@ export const Message = memo(function Message({
 				)}
 			</div>
 			<div className="msg-body">
-				{message.errorMessage && (
-					<div className="msg-error">{message.errorMessage}</div>
-				)}
-				{isFileAttachment ? (
-					<AttachmentCard message={message} />
-				) : (
-					message.content.map((block, i) => (
-						<Block
-							key={`${message.id}-${i}`}
-							block={block}
-							toolResults={toolResults}
-							liveOutputs={liveOutputs}
-							streaming={streaming}
-							isLast={isLast}
+				{editing ? (
+					<div className="msg-editor">
+						<textarea
+							className="msg-editor-input"
+							value={draft}
+							autoFocus
+							placeholder={t("editPlaceholder")}
+							rows={Math.max(2, Math.min(10, draft.split("\n").length + 1))}
+							onChange={(e) => setDraft(e.target.value)}
+							onKeyDown={(e) => {
+								if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+									e.preventDefault();
+									submitEdit();
+								} else if (e.key === "Escape") {
+									setEditing(false);
+								}
+							}}
 						/>
-					))
-				)}
-				{isEmptyStreaming && (
-					<div className="thinking-wait">
-						{t("thinkingWait")}
-						<span className="dot" />
+						<div className="msg-editor-actions">
+							<span className="msg-editor-hint">{t("editHint")}</span>
+							<button
+								type="button"
+								className="chip"
+								onClick={() => setEditing(false)}
+							>
+								{t("cancel")}
+							</button>
+							<button
+								type="button"
+								className="chip primary"
+								disabled={!draft.trim()}
+								title={t("reaskFromHere")}
+								onClick={submitEdit}
+							>
+								<FiEdit3 /> {t("reaskFromHere")}
+							</button>
+						</div>
 					</div>
-				)}
-				{streaming && isLast && !isEmptyStreaming && (
-					<span className="stream-cursor" />
+				) : (
+					<>
+						{message.errorMessage && (
+							<div className="msg-error">{message.errorMessage}</div>
+						)}
+						{isFileAttachment ? (
+							<AttachmentCard message={message} />
+						) : (
+							message.content.map((block, i) => (
+								<Block
+									key={`${message.id}-${i}`}
+									block={block}
+									toolResults={toolResults}
+									liveOutputs={liveOutputs}
+									streaming={streaming}
+									isLast={isLast}
+								/>
+							))
+						)}
+						{isEmptyStreaming && (
+							<div className="thinking-wait">
+								{t("thinkingWait")}
+								<span className="dot" />
+							</div>
+						)}
+						{streaming && isLast && !isEmptyStreaming && (
+							<span className="stream-cursor" />
+						)}
+					</>
 				)}
 			</div>
+			{canEdit && !editing && (
+				<div className="msg-actions">
+					<button
+						type="button"
+						className="msg-action"
+						title={t("editReaskTip")}
+						onClick={startEdit}
+					>
+						<FiEdit3 /> {t("editReask")}
+					</button>
+				</div>
+			)}
 		</div>
 	);
 });

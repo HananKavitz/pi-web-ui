@@ -5,6 +5,7 @@ import type {
 	FileContent,
 	FileListing,
 	ModelInfo,
+	ProjectSummary,
 	ProviderStatus,
 	ServerMessage,
 	SessionSummary,
@@ -43,6 +44,8 @@ export interface ChatState {
 	serverVersion?: string;
 	/** Persisted session list for the left panel. */
 	sessions: SessionSummary[];
+	/** Recent workspaces this client opened (left panel project picker). */
+	projects: ProjectSummary[];
 	/** Workspace file listing for the right panel. */
 	files: FileListing | null;
 	/** Latest file content fetched for the preview panel (path-matched in the modal). */
@@ -85,6 +88,7 @@ type Action =
 	| { type: "dismiss_notice"; id: number }
 	| { type: "ready"; serverVersion: string }
 	| { type: "sessions"; sessions: SessionSummary[] }
+	| { type: "projects"; projects: ProjectSummary[] }
 	| { type: "files"; files: FileListing }
 	| { type: "file_content"; content: FileContent }
 	| { type: "models"; models: ModelInfo[]; loading: boolean }
@@ -226,6 +230,8 @@ function reducer(state: ChatState, action: Action): ChatState {
 			};
 		case "sessions":
 			return { ...state, sessions: action.sessions };
+		case "projects":
+			return { ...state, projects: action.projects };
 		case "files":
 			return { ...state, files: action.files };
 		case "file_content":
@@ -308,6 +314,7 @@ export function useChat() {
 		liveOutputs: new Map(),
 		notices: [],
 		sessions: [],
+		projects: [],
 		files: null,
 		fileContent: null,
 		models: [],
@@ -395,6 +402,9 @@ export function useChat() {
 						JSON.stringify({ type: "list_sessions" } satisfies ClientMessage),
 					);
 					ws.send(
+						JSON.stringify({ type: "list_projects" } satisfies ClientMessage),
+					);
+					ws.send(
 						JSON.stringify({ type: "list_files" } satisfies ClientMessage),
 					);
 					ws.send(
@@ -429,6 +439,9 @@ export function useChat() {
 				}
 				case "sessions":
 					dispatch({ type: "sessions", sessions: msg.sessions });
+					break;
+				case "projects":
+					dispatch({ type: "projects", projects: msg.projects });
 					break;
 				case "files":
 					dispatch({ type: "files", files: msg });

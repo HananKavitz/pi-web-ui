@@ -10,8 +10,14 @@
  * so reconnects just re-request a snapshot.
  */
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import {
+	existsSync,
+	readFileSync,
+	statSync,
+	writeFileSync,
+	mkdirSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
 import {
 	createAgentSessionFromServices,
 	createAgentSessionRuntime,
@@ -27,6 +33,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type {
 	CommandDef,
+	ProjectSummary,
 	ServerMessage,
 	SessionSummary,
 	UiMessage,
@@ -518,15 +525,79 @@ function extractPartialText(partial: unknown): string | null {
 	return null;
 }
 
+// ---------------------------------------------------------------------------
+// Per-client persisted UI state (<dataDir>/client-state.json)
+// ---------------------------------------------------------------------------
+
+interface ClientState {
+	/** Absolute path of the workspace this client last used. */
+	lastCwd?: string;
+	/** Workspaces this client opened before, most recent first (capped at 30). */
+	projects: { path: string; lastUsed: number }[];
+}
+
+/**
+ * Persists which workspace each browser client last used + which workspaces it
+ * has opened, so a server restart / page reload restores the same project and
+ * the UI can offer a one-click recent-project list. File I/O is best-effort:
+ * persistence problems must never crash the server or block a session.
+ */
+class ClientStateStore {
+	private cache: Record<string, ClientState> | null = null;
+
+	constructor(private filePath: string) {}
+
+	private load(): Record<string, ClientState> {
+		if (this.cache) return this.cache;
+		try {
+			const parsed = JSON.parse(readFileSync(this.filePath, "utf8")) as Record<
+				string,
+				ClientState
+			>;
+			this.cache = parsed && typeof parsed === "object" ? parsed : {};
+		} catch {
+			this.cache = {};
+		}
+		return this.cache;
+	}
+
+	private save(): void {
+		try {
+			mkdirSync(dirname(this.filePath), { recursive: true });
+			writeFileSync(this.filePath, JSON.stringify(this.cache, null, 2) + "\n");
+		} catch {
+			// best effort
+		}
+	}
+
+	get(clientId: string): ClientState {
+		return this.load()[clientId] ?? { projects: [] };
+	}
+
+	/** Remember which workspace a client last used; bumps its project entry. */
+	remember(clientId: string, cwd: string): void {
+		const all = this.load();
+		const state = (all[clientId] ??= { projects: [] });
+		state.lastCwd = cwd;
+		const now = Date.now();
+		state.projects = [
+			{ path: cwd, lastUsed: now },
+			...state.projects.filter((p) => p.path !== cwd),
+		].slice(0, 30);
+		this.save();
+	}
+}
+
 export class ClientSession {
 	readonly clientId: string;
 	cwd: string;
-	/** Immutable workspace root the commands file (.pi/commands.json) is anchored to. */
-	readonly workspaceRoot: string;
+	/** Absolute per-client session directory.
 	/** Absolute per-client session directory. */
 	readonly sessionDir: string;
 	/** pi config dir (auth/models/skills). */
 	private readonly agentDir: string;
+	/** Persisted per-client UI state (last workspace + recent projects). */
+	private readonly stateStore: ClientStateStore;
 	runtime: AgentSessionRuntime;
 	session: AgentSession;
 
@@ -570,20 +641,22 @@ export class ClientSession {
 		sessionDir: string,
 		agentDir: string,
 		runtime: AgentSessionRuntime,
+		stateStore: ClientStateStore,
 	) {
 		this.clientId = clientId;
 		this.cwd = cwd;
-		this.workspaceRoot = cwd;
 		this.sessionDir = sessionDir;
 		this.agentDir = agentDir;
 		this.runtime = runtime;
 		this.session = runtime.session;
+		this.stateStore = stateStore;
 	}
 
 	static async create(
 		clientId: string,
 		cwd: string,
 		sessionDir: string,
+		stateStore: ClientStateStore,
 	): Promise<ClientSession> {
 		const agentDir = process.env.PI_CODING_AGENT_DIR ?? getAgentDir();
 
@@ -598,7 +671,14 @@ export class ClientSession {
 			},
 		);
 
-		const cs = new ClientSession(clientId, cwd, sessionDir, agentDir, runtime);
+		const cs = new ClientSession(
+			clientId,
+			cwd,
+			sessionDir,
+			agentDir,
+			runtime,
+			stateStore,
+		);
 		for (const d of runtime.diagnostics) {
 			if (d.type !== "info") {
 				cs.pendingNotices.push({
@@ -1659,6 +1739,113 @@ export class ClientSession {
 		this.flushSnapshot();
 	}
 
+	/**
+	 * Map a rendered user-message id (`u-<timestamp>-<seq>`, assigned in
+	 * serialize.ts) back to its append-only session entry id. The seq handles
+	 * two user messages sharing the same millisecond timestamp.
+	 */
+	private resolveUserMessageEntryId(messageId: string): string | null {
+		const m = /^u-(\d+)(?:-(\d+))?$/.exec(messageId);
+		if (!m) return null;
+		const ts = Number(m[1]);
+		const seq = m[2] ? Number(m[2]) : 1;
+		let count = 0;
+		for (const entry of this.session.sessionManager.getEntries()) {
+			if (entry.type !== "message") continue;
+			const msg = (entry as unknown as { message?: AgentMessage }).message;
+			if (!msg || msg.role !== "user" || msg.timestamp !== ts) continue;
+			count += 1;
+			if (count === seq) return entry.id;
+		}
+		return null;
+	}
+
+	/**
+	 * Edit a past user question and re-ask it: forks a NEW session file that
+	 * keeps everything up to (but not including) that question, then sends the
+	 * edited text there. The original thread is untouched and stays in the
+	 * session list, so nothing is ever lost.
+	 */
+	async editMessage(messageId: string, text: string): Promise<void> {
+		const trimmed = text.trim();
+		if (!trimmed) {
+			this.emit({
+				type: "notice",
+				level: "warning",
+				text: "编辑内容为空，已取消",
+			});
+			this.flushSnapshot();
+			return;
+		}
+		const entryId = this.resolveUserMessageEntryId(messageId);
+		if (!entryId) {
+			this.emit({
+				type: "notice",
+				level: "error",
+				text: "找不到要编辑的消息（可能已被压缩或不在当前分支）",
+			});
+			this.flushSnapshot();
+			return;
+		}
+		try {
+			const result = await this.runtime.fork(entryId);
+			if (result.cancelled) {
+				this.emit({
+					type: "notice",
+					level: "info",
+					text: "已取消编辑重问",
+				});
+				this.flushSnapshot();
+				return;
+			}
+			await this.bindSession();
+			await this.prompt(trimmed);
+			this.emit({
+				type: "notice",
+				level: "info",
+				text: "已从该问题重新提问（原对话保留在会话列表中）",
+			});
+		} catch (err) {
+			this.emit({
+				type: "notice",
+				level: "error",
+				text: `编辑重问失败：${(err as Error).message}`,
+			});
+		}
+		this.flushSnapshot();
+	}
+
+	/**
+	 * Push the recent-project list (persisted per client, merged with every cwd
+	 * that has persisted sessions in this client's session store — so workspaces
+	 * opened before the recent-list feature existed still show up).
+	 */
+	async pushProjects(): Promise<void> {
+		try {
+			const saved = this.stateStore.get(this.clientId);
+			const map = new Map<string, number>();
+			for (const p of saved.projects) map.set(p.path, p.lastUsed);
+			const all = await SessionManager.listAll(this.sessionDir);
+			for (const s of all) {
+				if (s.cwd) {
+					const t = s.modified.getTime();
+					const prev = map.get(s.cwd);
+					if (prev === undefined || t > prev) map.set(s.cwd, t);
+				}
+			}
+			// Only keep directories that still exist — a deleted/unmounted workspace
+			// is useless in the picker.
+			const projects: ProjectSummary[] = [...map.entries()]
+				.filter(([path]) => existsSync(path))
+				.map(([path, lastUsed]) => ({ path, lastUsed }))
+				.sort((a, b) => b.lastUsed - a.lastUsed)
+				.slice(0, 20);
+			this.emit({ type: "projects", projects });
+		} catch {
+			this.emit({ type: "projects", projects: [] });
+		}
+	}
+
 	/** List a workspace directory (relative to the configured cwd). */
 	async listFiles(relPath?: string): Promise<void> {
 		try {
@@ -1938,6 +2125,9 @@ export class ClientSession {
 			const oldRuntime = this.runtime;
 			this.runtime = newRuntime;
 			this.cwd = abs;
+			// Remember the new workspace (restore target + recent-project entry).
+			this.stateStore.remember(this.clientId, abs);
+			void this.pushProjects();
 			this.unsubscribe?.();
 			this.unsubscribe = undefined;
 			await this.bindSession();
@@ -1954,6 +2144,8 @@ export class ClientSession {
 			});
 			void this.refreshSessions();
 			void this.listFiles(undefined);
+			// Commands are per-project (.pi/commands.json in the current cwd).
+			void this.listCommands();
 		} catch (err) {
 			this.emit({
 				type: "notice",
@@ -2039,7 +2231,7 @@ export class ClientSession {
 
 	/** Push the user command list (.pi/commands.json) to the client. */
 	async listCommands(): Promise<void> {
-		const { commands, path, warning } = await loadCommands(this.workspaceRoot);
+		const { commands, path, warning } = await loadCommands(this.cwd);
 		if (warning) {
 			this.emit({ type: "notice", level: "warning", text: warning });
 		}
@@ -2048,10 +2240,7 @@ export class ClientSession {
 
 	/** Persist the user command list (.pi/commands.json). */
 	async saveCommands(commands: CommandDef[]): Promise<void> {
-		const { path, error } = await saveCommandsFile(
-			this.workspaceRoot,
-			commands,
-		);
+		const { path, error } = await saveCommandsFile(this.cwd, commands);
 		if (error) {
 			this.emit({ type: "notice", level: "error", text: error });
 			return;
@@ -2089,11 +2278,15 @@ export class ClientSession {
 export class AgentService {
 	private clients = new Map<string, ClientSession>();
 	private pending = new Map<string, Promise<ClientSession>>();
+	private stateStore: ClientStateStore;
 
 	constructor(
 		private cwd: string,
 		private sessionDirRoot: string,
-	) {}
+		stateFile: string,
+	) {
+		this.stateStore = new ClientStateStore(stateFile);
+	}
 
 	/** Get or create the session for a client, racing attach calls safely. */
 	async attach(
@@ -2106,16 +2299,37 @@ export class AgentService {
 			if (inflight) {
 				cs = await inflight;
 			} else {
+				// Restore this client's last-used workspace when it still exists;
+				// otherwise fall back to the server's configured default cwd.
+				let cwd = this.cwd;
+				const saved = this.stateStore.get(clientId);
+				if (saved.lastCwd && saved.lastCwd !== this.cwd) {
+					try {
+						if (statSync(saved.lastCwd).isDirectory()) cwd = saved.lastCwd;
+					} catch {
+						// gone (unmounted drive / deleted) — fall back to the default
+					}
+				}
 				const creating = ClientSession.create(
 					clientId,
-					this.cwd,
+					cwd,
 					join(this.sessionDirRoot, sanitizeId(clientId)),
+					this.stateStore,
 				).finally(() => {
 					this.pending.delete(clientId);
 				});
 				this.pending.set(clientId, creating);
 				cs = await creating;
 				this.clients.set(clientId, cs);
+				// Make sure the restored/default workspace appears in the project list.
+				this.stateStore.remember(clientId, cwd);
+				if (cwd !== this.cwd) {
+					send({
+						type: "notice",
+						level: "info",
+						text: `已恢复上次的工作目录：${cwd}`,
+					});
+				}
 			}
 		}
 		cs.attachSink(send);

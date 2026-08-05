@@ -6,6 +6,8 @@ web/dist/
 .DS_Store
 data/
 .pi-web/
+# per-project personal commands (never committed)
+.pi/commands.json
 
 # ad-hoc debug / repro scripts
 repro-view-switch.mjs

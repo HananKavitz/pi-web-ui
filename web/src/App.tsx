@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { TopBar } from "./components/TopBar";
 import { LeftPanel } from "./components/LeftPanel";
 import { RightPanel } from "./components/RightPanel";
@@ -102,6 +102,15 @@ export function App() {
 	const removeAttachment = (path: string) =>
 		setAttachments((prev) => prev.filter((a) => a.path !== path));
 
+	// Edit-and-re-ask: the server forks a new session at that message and re-asks
+	// the edited text there (stable callback — Message is memoized).
+	const onEditMessage = useCallback(
+		(messageId: string, text: string) => {
+			send({ type: "edit_message", messageId, text });
+		},
+		[send],
+	);
+
 	return (
 		<div className="app">
 			<TopBar
@@ -131,7 +140,11 @@ export function App() {
 					<LeftPanel chat={chat} send={send} />
 					<main className="main">
 						{chat.state ? (
-							<MessageList state={chat.state} liveOutputs={chat.liveOutputs} />
+							<MessageList
+								state={chat.state}
+								liveOutputs={chat.liveOutputs}
+								onEdit={onEditMessage}
+							/>
 						) : (
 							<div className="boot-wait">
 								{chat.ready ? t("loadingSession") : t("connectingServer")}

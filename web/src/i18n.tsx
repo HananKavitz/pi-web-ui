@@ -85,12 +85,21 @@ const zh = {
 	sendTip: "发送（Enter）",
 
 	/* left panel */
+	recentProjects: "最近项目",
 	noHistory: "还没有历史对话",
 	current: "当前",
 	messageCount: "{n} 条消息",
 	tuiTip: "pi 终端（TUI）中的对话",
 	refreshList: "刷新列表",
 	emptyChat: "空对话",
+
+	/* message edit */
+	editReask: "编辑重问",
+	editReaskTip:
+		"修改此问题，并从这里重新提问（会新建一个分支对话，原对话保留）",
+	reaskFromHere: "从此处重新提问",
+	editPlaceholder: "修改问题内容…",
+	editHint: "⌘/Ctrl+Enter 提交 · Esc 取消",
 
 	/* right panel */
 	files: "文件",
@@ -341,12 +350,21 @@ const en: Record<keyof typeof zh, string> = {
 	sendTip: "Send (Enter)",
 
 	/* left panel */
+	recentProjects: "Recent projects",
 	noHistory: "No previous chats",
 	current: "Current",
 	messageCount: "{n} messages",
 	tuiTip: "Chat in the pi terminal (TUI)",
 	refreshList: "Refresh list",
 	emptyChat: "Empty chat",
+
+	/* message edit */
+	editReask: "Edit & re-ask",
+	editReaskTip:
+		"Edit this question and re-ask from here (forks a new conversation; the original is kept)",
+	reaskFromHere: "Re-ask from here",
+	editPlaceholder: "Edit the question…",
+	editHint: "⌘/Ctrl+Enter to submit · Esc to cancel",
 
 	/* right panel */
 	files: "Files",

@@ -36,9 +36,11 @@ function examples(
 interface MessageListProps {
 	state: UiState;
 	liveOutputs: ReadonlyMap<string, { toolName: string; text: string }>;
+	/** Edit-and-re-ask handler (forwarded to user message bubbles). */
+	onEdit?: (messageId: string, text: string) => void;
 }
 
-export function MessageList({ state, liveOutputs }: MessageListProps) {
+export function MessageList({ state, liveOutputs, onEdit }: MessageListProps) {
 	const t = useT();
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [stickBottom, setStickBottom] = useState(true);
@@ -126,6 +128,7 @@ export function MessageList({ state, liveOutputs }: MessageListProps) {
 						liveOutputs={hasToolCall(m) ? liveOutputs : EMPTY_LIVE}
 						streaming={state.isStreaming}
 						isLast={m.id === lastId}
+						onEdit={onEdit}
 					/>
 				))}
 				{state.streamingMessage && (
@@ -138,6 +141,7 @@ export function MessageList({ state, liveOutputs }: MessageListProps) {
 						}
 						streaming
 						isLast
+						onEdit={onEdit}
 					/>
 				)}
 				{state.isStreaming && messages.length === 0 && (

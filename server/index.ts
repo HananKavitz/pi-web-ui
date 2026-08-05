@@ -95,7 +95,12 @@ const heartbeatTimer = setInterval(() => {
 	}
 }, 10_000);
 
-const service = new AgentService(CWD, SESSION_DIR_ROOT);
+const service = new AgentService(
+	CWD,
+	SESSION_DIR_ROOT,
+	// Per-client persisted UI state: last-used workspace + recent projects.
+	join(DATA_DIR, "client-state.json"),
+);
 
 wss.on("connection", (ws) => {
 	let clientId: string | null = null;
@@ -130,6 +135,9 @@ wss.on("connection", (ws) => {
 			case "new_chat":
 				void cs.newChat();
 				break;
+			case "edit_message":
+				void cs.editMessage(msg.messageId, msg.text);
+				break;
 			case "cycle_model":
 				void cs.cycleModel();
 				break;
@@ -141,6 +149,9 @@ wss.on("connection", (ws) => {
 				break;
 			case "list_sessions":
 				void cs.refreshSessions();
+				break;
+			case "list_projects":
+				void cs.pushProjects();
 				break;
 			case "switch_session":
 				void cs.switchSession(msg.path);

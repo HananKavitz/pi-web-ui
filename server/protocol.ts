@@ -172,11 +172,14 @@ export type ClientMessage =
 	| { type: "save_commands"; commands: CommandDef[] }
 	| { type: "abort" }
 	| { type: "new_chat" }
+	/** Edit a past user question and re-ask it (forks a new session at that point). */
+	| { type: "edit_message"; messageId: string; text: string }
 	| { type: "cycle_model" }
 	| { type: "cycle_thinking" }
 	| { type: "get_state" }
 	| { type: "list_sessions" }
 	| { type: "switch_session"; path: string }
+	| { type: "list_projects" }
 	| { type: "list_files"; path?: string }
 	/** Read a workspace file for the preview panel (size-capped, binary-safe). */
 	| { type: "read_file"; path: string }
@@ -212,6 +215,17 @@ export interface SessionSummary {
 	modified: number;
 	/** Where the session lives: this UI's per-client dir, or the pi CLI/TUI dir. */
 	source?: "web" | "tui";
+}
+
+/**
+ * A workspace directory this client has opened before (persisted per client in
+ * <dataDir>/client-state.json, merged with cwds found in the session store).
+ */
+export interface ProjectSummary {
+	/** Absolute path of the workspace directory. */
+	path: string;
+	/** Last time this workspace was used (ms epoch) — drives the sort order. */
+	lastUsed: number;
 }
 
 export interface FileEntry {
@@ -287,6 +301,7 @@ export type ServerMessage =
 	/** Sent every ~10s so clients can detect half-open connections. */
 	| { type: "heartbeat" }
 	| { type: "sessions"; sessions: SessionSummary[] }
+	| { type: "projects"; projects: ProjectSummary[] }
 	| {
 			type: "files";
 			path: string;

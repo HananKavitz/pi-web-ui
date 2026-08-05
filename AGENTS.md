@@ -38,6 +38,10 @@ pi-web-ui/
 │   │                           #   · 附件构建（inline/reference/lines 三种模式）
 │   │                           #   · readFile 预览（512KB 上限、二进制检测、路径越界拦截）
 │   │                           #   · 模型管理 / auth.json / models.json / 会话列表 / cwd 切换
+│   │                           #   · 每客户端持久化 lastCwd + 最近项目（<dataDir>/client-state.json，
+│   │                           #     重启后恢复上次工作目录；projects 消息推送最近项目列表）
+│   │                           #   · 编辑重问（edit_message）：按消息 id 解析 entryId → runtime.fork
+│   │                           #     新建分支会话（保留该问题之前的历史，原对话不动）→ 重新 prompt
 │   ├── serialize.ts            # SDK 消息 → UiMessage 序列化（截断、稳定 id、对象缓存）
 │   └── terminals.ts            # TerminalManager（PTY 生命周期）+ .pi/commands.json 读写
 ├── web/                        # 前端（React + Vite，编译到 web/dist/）
@@ -66,6 +70,7 @@ pi-web-ui/
 | 组件 | 职责 |
 | --- | --- |
 | `FilePreview.tsx` | 文件预览弹窗：行号、点选/拖拽/Shift 选区、添加到对话（lines 附件） |
+| `LeftPanel.tsx` | 左栏：最近项目（点击切换 cwd）+ 当前项目的会话列表 |
 | `RightPanel.tsx` | 文件树浏览（list_files），文件名点击→预览，📎/🔗/👁 附件按钮 |
 | `ChatInput.tsx` | 输入框 + 附件 chips（inline/reference/lines 三色） |
 | `Message.tsx` / `MessageList.tsx` | 消息渲染：附件卡片（`stripFileWrapper` 剥 `<file>` 包装）、流式光标、tool 结果关联 |
@@ -186,7 +191,8 @@ curl -s https://registry.npmjs.org/pi-web-ui/latest | jq .version
 
 - 版本号**必须**高于 npm registry 上已有的（当前 `0.2.x`）。
 - 提交信息不要带 `Co-authored-by`（P1 规则，仓库 hook 会拦）。
-- `.pi/commands.json` 含个人本地命令，改动会进公开仓库——提交前跟用户确认是否要推。
+- `.pi/commands.json` 是**每个项目各自**的个人命令（当前 cwd 的 `.pi/ 下），已被 gitignore，永远不会进公开仓库；
+  切换 cwd 时命令列表自动刷新为该项目的命令。
 - 大改动发布前先问用户是否要 `npm publish`（会真实消耗账号权限、触发构建）。
 - **服务方式部署的实例升级后必须重启**：`npm i -g` 只更新磁盘文件，已运行进程内存里还是旧代码——
   前端是每次请求实时读盘的（会先变新），但 WS 消息处理是进程内旧逻辑，新旧混跑会表现为
