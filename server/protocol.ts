@@ -82,6 +82,8 @@ export interface UiState {
 	cwd: string;
 	sessionId: string;
 	sessionFile?: string;
+	/** Id of the ACTIVE open conversation (see `conversations` message). */
+	conversationId: string;
 	messages: UiMessage[];
 	/**
 	 * Live partial assistant message while a run is streaming. The SDK keeps the
@@ -179,6 +181,7 @@ export type ClientMessage =
 	| { type: "get_state" }
 	| { type: "list_sessions" }
 	| { type: "switch_session"; path: string }
+	| { type: "switch_conversation"; id: string }
 	| { type: "list_projects" }
 	| { type: "list_files"; path?: string }
 	/** Read a workspace file for the preview panel (size-capped, binary-safe). */
@@ -287,10 +290,20 @@ export interface ProviderStatus {
 	/** Where auth came from: stored / runtime / environment / models_json_key … */
 	source?: string;
 }
+/** One open conversation of the client (each runs its own session, in parallel). */
+export interface ConversationSummary {
+	id: string;
+	/** Display title: first user prompt (truncated) or the default. */
+	title: string;
+	cwd: string;
+	messageCount: number;
+	isStreaming: boolean;
+}
 
 export type ServerMessage =
 	| { type: "ready"; clientId: string; serverVersion: string }
 	| { type: "snapshot"; state: UiState }
+	| { type: "conversations"; conversations: ConversationSummary[]; activeId: string }
 	| {
 			type: "tool_delta";
 			toolCallId: string;

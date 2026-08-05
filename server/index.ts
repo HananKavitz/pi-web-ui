@@ -162,6 +162,9 @@ wss.on("connection", (ws) => {
 			case "switch_session":
 				void cs.switchSession(msg.path);
 				break;
+			case "switch_conversation":
+				void cs.switchConversation(msg.id);
+				break;
 			case "list_files":
 				void cs.listFiles(msg.path);
 				break;

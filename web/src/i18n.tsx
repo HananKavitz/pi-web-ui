@@ -86,6 +86,8 @@ const zh = {
 
 	/* left panel */
 	recentProjects: "最近项目",
+	openConversations: "打开的对话",
+	streaming: "进行中…",
 	noHistory: "还没有历史对话",
 	current: "当前",
 	messageCount: "{n} 条消息",
@@ -372,6 +374,8 @@ const en: Record<keyof typeof zh, string> = {
 
 	/* left panel */
 	recentProjects: "Recent projects",
+	openConversations: "Open chats",
+	streaming: "Streaming…",
 	noHistory: "No previous chats",
 	current: "Current",
 	messageCount: "{n} messages",

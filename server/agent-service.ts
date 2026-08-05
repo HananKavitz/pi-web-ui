@@ -34,6 +34,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type {
 	CommandDef,
+	ConversationSummary,
 	ProjectSummary,
 	ServerMessage,
 	SessionSummary,
@@ -604,6 +605,70 @@ class ClientStateStore {
 	}
 }
 
+/**
+ * One open conversation (chat thread) of a client. Each conversation owns its
+ * OWN AgentSessionRuntime, so starting a new chat or switching between chats
+ * never interrupts another conversation's in-flight run.
+ */
+interface Conversation {
+	id: string;
+	/** Display title: first user prompt (truncated) or the default. */
+	title: string;
+	runtime: AgentSessionRuntime;
+	session: AgentSession;
+	cwd: string;
+	createdAt: number;
+	/** Session event subscription — events are routed to THIS conversation. */
+	unsubscribe?: () => void;
+	// Per-conversation serialization caches. Message ids derive from
+	// (role, timestamp); two conversations can produce identical pairs, so
+	// these must never be shared across conversations.
+	msgIds: Map<string, number>;
+	nextMsgId: number;
+	uiMessageCache: Map<string, UiMessage>;
+	lastMessagesSig: string;
+	lastMessagesArray: UiMessage[];
+	queueSteering: number;
+	queueFollowUp: number;
+}
+
+/** Cap on simultaneously open conversations (each keeps a full runtime alive). */
+const MAX_OPEN_CONVERSATIONS = 8;
+const DEFAULT_CONV_TITLE = "新对话";
+
+/** First user text in a session, truncated for the conversation list. */
+function conversationTitle(session: AgentSession): string {
+	try {
+		for (const m of session.agent.state.messages) {
+			if (m.role !== "user") continue;
+			const content = m.content as unknown;
+			let text = "";
+			if (typeof content === "string") {
+				text = content;
+			} else if (Array.isArray(content)) {
+				for (const p of content) {
+					if (
+						p &&
+						typeof p === "object" &&
+						(p as { type?: unknown }).type === "text" &&
+						typeof (p as { text?: unknown }).text === "string"
+					) {
+						text = (p as { text: string }).text;
+						break;
+					}
+				}
+			}
+			const trimmed = text.trim().replace(/\s+/g, " ");
+			if (trimmed.length > 0) {
+				return trimmed.length > 30 ? `${trimmed.slice(0, 30)}…` : trimmed;
+			}
+		}
+	} catch {
+		// best-effort
+	}
+	return DEFAULT_CONV_TITLE;
+}
+
 export class ClientSession {
 	readonly clientId: string;
 	cwd: string;
@@ -614,8 +679,33 @@ export class ClientSession {
 	private readonly agentDir: string;
 	/** Persisted per-client UI state (last workspace + recent projects). */
 	private readonly stateStore: ClientStateStore;
-	runtime: AgentSessionRuntime;
-	session: AgentSession;
+	/** Open conversations — each owns its OWN runtime, so starting a new chat
+	 *  or switching chats never interrupts an in-flight run. `runtime` and
+	 *  `session` accessors below target the ACTIVE conversation. */
+	private convs = new Map<string, Conversation>();
+	private activeId = "";
+	private convSeq = 0;
+	/** One ModelRuntime shared by all conversations — the model chosen in the
+	 *  top bar applies to every chat, not just the one that set it. Seeded by
+	 *  the first conversation and reused by later ones. */
+	private sharedModelRuntime:
+		| Awaited<ReturnType<typeof createAgentSessionServices>>["modelRuntime"]
+		| undefined;
+
+	/** The active conversation (all session operations target it). */
+	private get conv(): Conversation {
+		const conv = this.convs.get(this.activeId);
+		if (!conv) throw new Error("no active conversation");
+		return conv;
+	}
+	/** Runtime of the active conversation. */
+	get runtime(): AgentSessionRuntime {
+		return this.conv.runtime;
+	}
+	/** Session of the active conversation. */
+	get session(): AgentSession {
+		return this.conv.session;
+	}
 
 	/** PTY terminals for this client (killed when the last socket detaches). */
 	readonly terminals = new TerminalManager((msg) => this.emit(msg));
@@ -627,26 +717,14 @@ export class ClientSession {
 	/** Connected sockets for this client (multiple tabs share the session). */
 	private sinks = new Set<(msg: ServerMessage) => void>();
 	private pendingNotices: ServerMessage[] = [];
-	private unsubscribe?: () => void;
 	private snapshotTimer: ReturnType<typeof setTimeout> | null = null;
 	private sessionsTimer: ReturnType<typeof setTimeout> | null = null;
 	private version = 0;
 	/**
-	 * Stable per-message ids: assigned once per (role, timestamp) so snapshot ids
-	 * don't change every 60ms — changing ids would remount the whole list in
-	 * React (collapse open thinking blocks, reset scroll, jank on long chats).
+	 * Per-conversation serialization caches (stable message ids, UiMessage
+	 * object cache, message-array signature, queue counts) live inside each
+	 * Conversation — see Conversation above.
 	 */
-	private msgIds = new Map<string, number>();
-	private nextMsgId = 1;
-	/** Serialized UiMessage cache — object-reference-stable across snapshots, so
-	 *  the frontend's React.memo can skip unchanged messages entirely. */
-	private uiMessageCache = new Map<string, UiMessage>();
-	/** Reused when the message set didn't change, keeping state.messages
-	 *  reference-stable so the frontend can memoize derived maps. */
-	private lastMessagesSig = "";
-	private lastMessagesArray: UiMessage[] = [];
-	private queueSteering = 0;
-	private queueFollowUp = 0;
 	private disposed = false;
 	/** pi-config readiness check, cached briefly so 60ms snapshots don't hit disk. */
 	private piCheckCache: { at: number; configured: boolean } | null = null;
@@ -656,15 +734,12 @@ export class ClientSession {
 		cwd: string,
 		sessionDir: string,
 		agentDir: string,
-		runtime: AgentSessionRuntime,
 		stateStore: ClientStateStore,
 	) {
 		this.clientId = clientId;
 		this.cwd = cwd;
 		this.sessionDir = sessionDir;
 		this.agentDir = agentDir;
-		this.runtime = runtime;
-		this.session = runtime.session;
 		this.stateStore = stateStore;
 	}
 
@@ -676,25 +751,20 @@ export class ClientSession {
 	): Promise<ClientSession> {
 		const agentDir = process.env.PI_CODING_AGENT_DIR ?? getAgentDir();
 
-		const runtime = await createAgentSessionRuntime(
-			ClientSession.runtimeFactory,
-			{
-				cwd,
-				agentDir,
-				// Resume the most recent session for this client's private session dir,
-				// or start a fresh one on first visit.
-				sessionManager: SessionManager.continueRecent(cwd, sessionDir),
-			},
-		);
-
-		const cs = new ClientSession(
-			clientId,
+		const cs = new ClientSession(clientId, cwd, sessionDir, agentDir, stateStore);
+		const runtime = await createAgentSessionRuntime(cs.makeRuntimeFactory(), {
 			cwd,
-			sessionDir,
 			agentDir,
-			runtime,
-			stateStore,
-		);
+			// Resume the most recent session for this client's private session dir,
+			// or start a fresh one on first visit.
+			sessionManager: SessionManager.continueRecent(cwd, sessionDir),
+		});
+		// First conversation = the resumed session; it also seeds the shared
+		// ModelRuntime that every later conversation reuses.
+		cs.sharedModelRuntime = runtime.services.modelRuntime;
+		const conv = cs.makeConversation(runtime);
+		cs.convs.set(conv.id, conv);
+		cs.activeId = conv.id;
 		for (const d of runtime.diagnostics) {
 			if (d.type !== "info") {
 				cs.pendingNotices.push({
@@ -708,18 +778,43 @@ export class ClientSession {
 		return cs;
 	}
 
-	/** Builds a full cwd-bound runtime for the given working directory. */
-	private static runtimeFactory: CreateAgentSessionRuntimeFactory = async ({
-		cwd: effectiveCwd,
-		sessionManager,
-	}) => {
-		const services = await createAgentSessionServices({ cwd: effectiveCwd });
-		return {
-			...(await createAgentSessionFromServices({ services, sessionManager })),
-			services,
-			diagnostics: services.diagnostics,
+	/**
+	 * Factory for cwd-bound runtimes. All conversations share ONE ModelRuntime
+	 * (the model choice is client-wide), so later conversations reuse the
+	 * instance created with the first one.
+	 */
+	private makeRuntimeFactory(): CreateAgentSessionRuntimeFactory {
+		return async ({ cwd: effectiveCwd, sessionManager }) => {
+			const services = await createAgentSessionServices({
+				cwd: effectiveCwd,
+				modelRuntime: this.sharedModelRuntime,
+			});
+			return {
+				...(await createAgentSessionFromServices({ services, sessionManager })),
+				services,
+				diagnostics: services.diagnostics,
+			};
 		};
-	};
+	}
+
+	/** Wrap a fresh runtime as a new conversation record. */
+	private makeConversation(runtime: AgentSessionRuntime): Conversation {
+		return {
+			id: `c${++this.convSeq}`,
+			title: conversationTitle(runtime.session),
+			runtime,
+			session: runtime.session,
+			cwd: runtime.cwd,
+			createdAt: Date.now(),
+			msgIds: new Map(),
+			nextMsgId: 1,
+			uiMessageCache: new Map(),
+			lastMessagesSig: "",
+			lastMessagesArray: [],
+			queueSteering: 0,
+			queueFollowUp: 0,
+		};
+	}
 
 	/** Add a socket to this client's broadcast set; flushes buffered startup notices. */
 	attachSink(send: (msg: ServerMessage) => void): void {
@@ -732,6 +827,9 @@ export class ClientSession {
 		if (widgets.length > 0) send({ type: "widgets", widgets });
 		const statuses = this.webUi.statusSnapshot();
 		if (statuses.length > 0) send({ type: "statuses", statuses });
+		// Reconnect: push the open-conversation list so the left panel shows
+		// every chat (a fresh socket never got the newChat/switch pushes).
+		this.emitConversations();
 	}
 
 	detachSink(send: (msg: ServerMessage) => void): void {
@@ -747,18 +845,21 @@ export class ClientSession {
 		for (const sink of [...this.sinks]) sink(msg);
 	}
 
-	/** (Re)attach event plumbing to the active session — also used after new_chat. */
+	/** (Re)attach event plumbing to the ACTIVE conversation's session. */
 	private async bindSession(): Promise<void> {
-		this.unsubscribe?.();
-		this.session = this.runtime.session;
-		await this.session.bindExtensions({
+		const conv = this.conv;
+		conv.unsubscribe?.();
+		conv.session = conv.runtime.session;
+		await conv.session.bindExtensions({
 			mode: "rpc",
 			uiContext: this.webUi,
 			onError: (err) => {
 				this.emit({ type: "notice", level: "error", text: err.error });
 			},
 		});
-		this.unsubscribe = this.session.subscribe((event) => this.onEvent(event));
+		conv.unsubscribe = conv.session.subscribe((event) =>
+			this.onEvent(conv, event),
+		);
 		this.scheduleSnapshot();
 		this.webUi.refresh();
 		this.startWidgetsTimer();
@@ -772,7 +873,7 @@ export class ClientSession {
 		}, WIDGET_REFRESH_MS);
 	}
 
-	private onEvent(event: AgentSessionEvent): void {
+	private onEvent(conv: Conversation, event: AgentSessionEvent): void {
 		switch (event.type) {
 			case "bash_execution_update": {
 				if (event.id) {
@@ -798,8 +899,8 @@ export class ClientSession {
 				break;
 			}
 			case "queue_update":
-				this.queueSteering = event.steering.length;
-				this.queueFollowUp = event.followUp.length;
+				conv.queueSteering = event.steering.length;
+				conv.queueFollowUp = event.followUp.length;
 				break;
 			// A run finished or a new entry was persisted — keep the session list fresh
 			// (new chat + first message, completed turns, compaction, etc.).
@@ -813,36 +914,40 @@ export class ClientSession {
 		this.scheduleSnapshot();
 	}
 
-	/** Debounced push of the persisted session list to the client. */
+	/** Debounced push of the persisted session list + open conversations. */
 	private scheduleSessionsRefresh(): void {
 		if (this.sessionsTimer) return;
 		this.sessionsTimer = setTimeout(() => {
 			this.sessionsTimer = null;
-			if (!this.disposed) void this.pushSessions();
+			if (this.disposed) return;
+			this.emitConversations();
+			void this.pushSessions();
 		}, 800);
 	}
 
 	/** Serialize a persisted message with a STABLE id + cached object reference. */
 	private serializeCached(m: AgentMessage): UiMessage | null {
+		const conv = this.conv;
 		const key =
 			m.role === "toolResult"
 				? `t:${m.toolCallId}`
 				: `${m.role}:${m.timestamp}`;
-		let n = this.msgIds.get(key);
+		let n = conv.msgIds.get(key);
 		if (n === undefined) {
-			n = this.nextMsgId++;
-			this.msgIds.set(key, n);
+			n = conv.nextMsgId++;
+			conv.msgIds.set(key, n);
 		}
 		const cacheKey = `${key}#${n}`;
-		const cached = this.uiMessageCache.get(cacheKey);
+		const cached = conv.uiMessageCache.get(cacheKey);
 		if (cached) return cached;
 		const msg = serializeMessage(m, n);
-		if (msg) this.uiMessageCache.set(cacheKey, msg);
+		if (msg) conv.uiMessageCache.set(cacheKey, msg);
 		return msg;
 	}
 
 	snapshot(): UiState {
-		const state = this.session.agent.state;
+		const conv = this.conv;
+		const state = conv.session.agent.state;
 		const model = state.model;
 		let stats: UiState["stats"] = {
 			totalMessages: 0,
@@ -875,14 +980,15 @@ export class ClientSession {
 		// frontend memoize derived maps instead of rebuilding them every 60ms.
 		const sig = rawMessages.map((m) => m.id).join("\u0001");
 		const messages =
-			sig === this.lastMessagesSig ? this.lastMessagesArray : rawMessages;
-		this.lastMessagesSig = sig;
-		this.lastMessagesArray = rawMessages;
+			conv.lastMessagesSig === sig ? conv.lastMessagesArray : rawMessages;
+		conv.lastMessagesSig = sig;
+		conv.lastMessagesArray = rawMessages;
 		return {
 			clientId: this.clientId,
 			cwd: this.cwd,
 			sessionId: this.session.sessionId,
 			sessionFile: this.session.sessionFile,
+			conversationId: this.activeId,
 			messages,
 			// The in-progress assistant message lives in state.streamingMessage
 			// (the SDK only pushes it into state.messages at message_end). Surfacing
@@ -896,7 +1002,7 @@ export class ClientSession {
 				? { id: model.id, name: model.name, provider: model.provider }
 				: null,
 			thinkingLevel: state.thinkingLevel,
-			queue: { steering: this.queueSteering, followUp: this.queueFollowUp },
+			queue: { steering: conv.queueSteering, followUp: conv.queueFollowUp },
 			errorMessage: state.errorMessage,
 			tools: state.tools.map((t) => t.name),
 			version: ++this.version,
@@ -1472,6 +1578,13 @@ export class ClientSession {
 				text: `提示发送失败：${(err as Error).message}`,
 			});
 		}
+		// Name the conversation after its first user prompt.
+		const conv = this.conv;
+		if (conv.title === DEFAULT_CONV_TITLE && text.trim()) {
+			const trimmed = text.trim().replace(/\s+/g, " ");
+			conv.title = trimmed.length > 30 ? `${trimmed.slice(0, 30)}…` : trimmed;
+			this.emitConversations();
+		}
 		this.flushSnapshot();
 	}
 
@@ -1788,9 +1901,25 @@ export class ClientSession {
 	}
 
 	async newChat(): Promise<void> {
+		if (this.convs.size >= MAX_OPEN_CONVERSATIONS) {
+			this.emit({
+				type: "notice",
+				level: "warning",
+				text: `打开的对话已达上限（${MAX_OPEN_CONVERSATIONS} 个），请先切换或重载页面关闭`,
+			});
+			return;
+		}
 		try {
-			await this.runtime.newSession();
+			const runtime = await createAgentSessionRuntime(this.makeRuntimeFactory(), {
+				cwd: this.cwd,
+				agentDir: this.agentDir,
+				sessionManager: SessionManager.create(this.cwd, this.sessionDir),
+			});
+			const conv = this.makeConversation(runtime);
+			this.convs.set(conv.id, conv);
+			this.activeId = conv.id;
 			await this.bindSession();
+			this.emitConversations();
 		} catch (err) {
 			this.emit({
 				type: "notice",
@@ -1799,6 +1928,44 @@ export class ClientSession {
 			});
 		}
 		this.flushSnapshot();
+	}
+
+	/** Switch the ACTIVE conversation without interrupting any other chat. */
+	async switchConversation(id: string): Promise<void> {
+		if (!this.convs.has(id) || id === this.activeId) return;
+		this.activeId = id;
+		this.cwd = this.conv.cwd;
+		this.webUi.refresh();
+		this.emitConversations();
+		// Workspace-bound panels (session list / file tree / commands) follow
+		// the active conversation's cwd.
+		void this.refreshSessions();
+		void this.listFiles(undefined);
+		void this.listCommands();
+		this.flushSnapshot();
+	}
+
+	/** Push the open-conversation list to the client. */
+	private emitConversations(): void {
+		const conversations: ConversationSummary[] = [];
+		for (const conv of this.convs.values()) {
+			let messageCount = 0;
+			let isStreaming = false;
+			try {
+				messageCount = conv.session.getSessionStats().totalMessages;
+				isStreaming = conv.session.isStreaming;
+			} catch {
+				// session being replaced — report defaults
+			}
+			conversations.push({
+				id: conv.id,
+				title: conv.title,
+				cwd: conv.cwd,
+				messageCount,
+				isStreaming,
+			});
+		}
+		this.emit({ type: "conversations", conversations, activeId: this.activeId });
 	}
 
 	/** List persisted sessions for this client, newest first. */
@@ -1861,6 +2028,12 @@ export class ClientSession {
 		try {
 			await this.runtime.switchSession(path);
 			await this.bindSession();
+			// The resumed session carries its own cwd — sync it into the ACTIVE
+			// conversation (other open conversations are untouched).
+			this.conv.cwd = this.runtime.cwd;
+			this.cwd = this.runtime.cwd;
+			this.conv.title = conversationTitle(this.runtime.session);
+			this.emitConversations();
 		} catch (err) {
 			this.emit({
 				type: "notice",
@@ -2244,23 +2417,24 @@ export class ClientSession {
 				return;
 			}
 
-			// Build the new runtime first — only swap on success.
-			const newRuntime = await createAgentSessionRuntime(
-				ClientSession.runtimeFactory,
-				{
-					cwd: abs,
-					agentDir: this.agentDir,
-					sessionManager: SessionManager.continueRecent(abs, this.sessionDir),
-				},
-			);
-			const oldRuntime = this.runtime;
-			this.runtime = newRuntime;
+			// Build the new runtime first — only swap the ACTIVE conversation on
+			// success (other open conversations keep their own cwd + runtime).
+			const newRuntime = await createAgentSessionRuntime(this.makeRuntimeFactory(), {
+				cwd: abs,
+				agentDir: this.agentDir,
+				sessionManager: SessionManager.continueRecent(abs, this.sessionDir),
+			});
+			const conv = this.conv;
+			const oldRuntime = conv.runtime;
+			conv.runtime = newRuntime;
+			conv.session = newRuntime.session;
+			conv.cwd = abs;
 			this.cwd = abs;
 			// Remember the new workspace (restore target + recent-project entry).
 			this.stateStore.remember(this.clientId, abs);
 			void this.pushProjects();
-			this.unsubscribe?.();
-			this.unsubscribe = undefined;
+			conv.unsubscribe?.();
+			conv.unsubscribe = undefined;
 			await this.bindSession();
 			await oldRuntime.dispose().catch(() => {});
 			for (const d of newRuntime.diagnostics) {
@@ -2273,6 +2447,7 @@ export class ClientSession {
 				level: "info",
 				text: `已切换到工作目录：${abs}`,
 			});
+			this.emitConversations();
 			void this.refreshSessions();
 			void this.listFiles(undefined);
 			// Commands are per-project (.pi/commands.json in the current cwd).
@@ -2396,12 +2571,13 @@ export class ClientSession {
 			this.widgetsTimer = null;
 		}
 		this.webUi.dispose();
-		this.unsubscribe?.();
-		this.unsubscribe = undefined;
-		try {
-			await this.runtime.dispose();
-		} catch {
-			// best effort
+		for (const conv of this.convs.values()) {
+			conv.unsubscribe?.();
+			try {
+				await conv.runtime.dispose();
+			} catch {
+				// best effort
+			}
 		}
 	}
 }

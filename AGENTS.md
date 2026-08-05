@@ -33,7 +33,10 @@ pi-web-ui/
 ├── server/                     # 后端（Node ESM，编译到 dist/server/）
 │   ├── index.ts                # 入口：express 静态 + /ws 端点、消息分发、心跳、优雅停机
 │   ├── protocol.ts             # ★ 唯一事实源：wire 协议类型（client↔server 消息）
-│   ├── agent-service.ts        # 核心：ClientSession（每浏览器客户端一个私有会话）+ AgentService
+│   ├── agent-service.ts        # 核心：ClientSession（每客户端一个会话组，可并行多个对话）+ AgentService
+│   │                           #   · 多对话并发：convs Map<convId, Conversation>，每个对话独立
+│   │                           #     AgentSessionRuntime（new_chat 不再杀旧对话，switch_conversation
+│   │                           #     只换 activeId；模型共享一个 ModelRuntime；消息序列化缓存按对话隔离）
 │   │                           #   · WebUIContext：把扩展的 widget/status/dialog 桥接到浏览器
 │   │                           #   · 附件构建（inline/reference/lines 三种模式）
 │   │                           #   · readFile 预览（512KB 上限、二进制检测、路径越界拦截）
@@ -124,8 +127,26 @@ pi-web-ui/
 
 - 每客户端一个 `TerminalManager`；输出经 `terminal_output` 推给浏览器，
   未挂载终端先缓冲（200KB 上限），挂载时冲刷。socket 断开 → 服务端杀掉全部 PTY。
+- macOS 下若服务由 launchd 拉起（`process.ppid === 1`，LaunchAgent/孤儿进程），TCC 会把
+  相机/麦克风权限归因到 node 本身（无 App Bundle、无 Info.plist）而静默拒绝——ffmpeg 取流会
+  卡死在取帧。`terminals.ts` 检测该场景，在客户端首次创建终端时输出提示（改 url/文件源，
+  或在自己已授权的终端里前台运行）。
 
 ### 其他桥接
+### 多对话并发
+
+- 每客户端 `convs: Map<convId, Conversation>`，**每个对话一个独立 `AgentSessionRuntime`**：
+  `new_chat` 新建 runtime + 新 session 文件（旧对话继续在后台跑，不中断）；
+  `switch_conversation` 只换 `activeId`（不碰其他 runtime）；`runtime`/`session` 访问器指向当前活动对话。
+- 上限 `MAX_OPEN_CONVERSATIONS = 8`，超出时 new_chat 发 warning notice。
+- 所有对话共享**一个 ModelRuntime**（首个对话创建时播种，`makeRuntimeFactory` 传入复用）——
+  顶栏换模型对全部对话生效。**消息序列化缓存（msgIds/uiMessageCache/签名）按对话隔离**：
+  两个对话可能产生相同的 (role, timestamp) 键，共享会串号。
+- `snapshot` 带 `conversationId`；新增 `conversations`（ServerMessage）与 `switch_conversation`（ClientMessage）。
+- 行为不变的部分：`switch_session`（恢复持久会话）替换**当前**对话的 runtime；`set_cwd` 只重建**当前**对话；
+  `edit_message` 在**当前**对话内 fork；`dispose` 遍历销毁全部对话；attachSink 重连时补推 conversations。
+- 前端：左栏「打开的对话」区（>1 个时显示，活跃高亮、流式绿点），MessageList 以 conversationId 为 key 强制切换重挂载。
+
 
 - 扩展的 `setWidget/setStatus/notify/select/confirm/input` → `widgets/statuses/notice/dialog` 消息；
   对话框经 `dialog_response` 回传，Esc 视为取消。

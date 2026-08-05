@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef } from "react";
 import type {
 	ClientMessage,
 	CommandDef,
+	ConversationSummary,
 	FileContent,
 	FileListing,
 	ModelInfo,
@@ -44,6 +45,10 @@ export interface ChatState {
 	serverVersion?: string;
 	/** Persisted session list for the left panel. */
 	sessions: SessionSummary[];
+	/** Open conversations (each runs its own session in parallel). */
+	conversations: ConversationSummary[];
+	/** Id of the conversation the current snapshot belongs to. */
+	activeConversationId: string;
 	/** Recent workspaces this client opened (left panel project picker). */
 	projects: ProjectSummary[];
 	/** Workspace file listing for the right panel. */
@@ -98,6 +103,7 @@ type Action =
 	| { type: "dismiss_notice"; id: number }
 	| { type: "ready"; serverVersion: string }
 	| { type: "sessions"; sessions: SessionSummary[] }
+	| { type: "conversations"; conversations: ConversationSummary[]; activeId: string }
 	| { type: "projects"; projects: ProjectSummary[] }
 	| { type: "files"; files: FileListing }
 	| { type: "file_content"; content: FileContent }
@@ -228,6 +234,7 @@ function reducer(state: ChatState, action: Action): ChatState {
 				...state,
 				ready: true,
 				state: action.state,
+				activeConversationId: action.state.conversationId,
 				liveOutputs: pruneLiveOutputs(state.liveOutputs, action.state),
 			};
 		case "tool_delta": {
@@ -251,6 +258,12 @@ function reducer(state: ChatState, action: Action): ChatState {
 			};
 		case "sessions":
 			return { ...state, sessions: action.sessions };
+		case "conversations":
+			return {
+				...state,
+				conversations: action.conversations,
+				activeConversationId: action.activeId,
+			};
 		case "projects":
 			return { ...state, projects: action.projects };
 		case "files":
@@ -339,6 +352,8 @@ export function useChat() {
 		liveOutputs: new Map(),
 		notices: [],
 		sessions: [],
+		conversations: [],
+		activeConversationId: "",
 		projects: [],
 		files: null,
 		fileContent: null,
@@ -469,6 +484,13 @@ export function useChat() {
 				}
 				case "sessions":
 					dispatch({ type: "sessions", sessions: msg.sessions });
+					break;
+				case "conversations":
+					dispatch({
+						type: "conversations",
+						conversations: msg.conversations,
+						activeId: msg.activeId,
+					});
 					break;
 				case "projects":
 					dispatch({ type: "projects", projects: msg.projects });

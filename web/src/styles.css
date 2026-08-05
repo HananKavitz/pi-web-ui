@@ -361,6 +361,27 @@ body {
 	color: var(--text-faint);
 }
 
+
+/* Open-conversation streaming indicator (left panel). */
+.conv-streaming {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	flex-shrink: 0;
+	background: var(--green);
+	box-shadow: 0 0 4px var(--green);
+	animation: conv-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes conv-pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.25;
+	}
+}
 .project-item {
 	display: flex;
 	align-items: center;

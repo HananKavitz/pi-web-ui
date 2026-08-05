@@ -228,6 +228,30 @@ function brokenSpawnHelper(): string {
 	return "";
 }
 
+// ---------------------------------------------------------------------------
+// macOS TCC camera/mic warning (launchd-spawned servers)
+// ---------------------------------------------------------------------------
+// TCC attributes camera/mic access to the process chain's "responsible
+// process". When pi-web-ui runs as a launchd LaunchAgent (node ← launchd),
+// the responsible process is node itself — a bare CLI binary with no app
+// bundle / Info.plist / NSCameraUsageDescription — so TCC silently denies
+// camera access (no prompt, nothing to tick in System Settings) and
+// ffmpeg-style grabbers hang on frame capture. The identical command works
+// from a terminal app that already holds the camera grant. Detect the
+// "no GUI ancestor" case (ppid === 1 on macOS) and warn in the terminal.
+const TCC_HINT = [
+	"\x1b[33m[提示] 本终端由后台服务（launchd）启动，macOS 隐私权限（相机/麦克风/屏幕录制等）对此类进程不可用。\x1b[0m",
+	"\x1b[90m  · 需要隐私权限的命令会被系统静默拒绝：不弹授权窗，系统设置里也无法勾选，表现多为卡死或无输出。",
+	"  · 这类任务请在你自己已授权的前台终端里运行。",
+	"  · 本终端内可运行不需要隐私权限的命令（如文件处理、网络请求、远程设备流）。",
+	"  · 若改在前台终端里运行 pi-web-ui，本提示即不再出现。\x1b[0m",
+].join("\r\n") + "\r\n";
+
+/** True when this server was spawned by launchd (or orphaned) on macOS — no GUI app in the ancestry, so camera/mic TCC grants are unavailable. */
+function launchdSpawnedOnMac(): boolean {
+	return process.platform === "darwin" && process.ppid === 1;
+}
+
 /**
  * Owns one or more PTYs for a client. All output is forwarded as
  * `terminal_output` messages through the provided emit (broadcast to every
@@ -237,6 +261,7 @@ function brokenSpawnHelper(): string {
 export class TerminalManager {
 	private terms = new Map<string, TermEntry>();
 	private seq = 0;
+	private tccHintShown = false;
 
 	constructor(private emit: (msg: ServerMessage) => void) {}
 
@@ -249,7 +274,16 @@ export class TerminalManager {
 		fallbackCwd: string,
 	): void {
 		if (this.terms.has(id)) return;
-		this.spawnShell(id, cwd || fallbackCwd, cols, rows, `终端 ${++this.seq}`);
+		if (this.spawnShell(id, cwd || fallbackCwd, cols, rows, `终端 ${++this.seq}`)) {
+			this.maybeEmitTccHint(id);
+		}
+	}
+
+	/** Warn about unavailable camera/mic TCC grants in a fresh terminal, once per client. */
+	private maybeEmitTccHint(id: string): void {
+		if (this.tccHintShown || !launchdSpawnedOnMac()) return;
+		this.tccHintShown = true;
+		this.writeOut(id, TCC_HINT);
 	}
 
 	/**
@@ -297,6 +331,7 @@ export class TerminalManager {
 			id,
 			`\x1b[90m> ${command}\x1b[0m  \x1b[90m(${dir})\x1b[0m\r\n`,
 		);
+		this.maybeEmitTccHint(id);
 		if (command) this.input(id, command + "\r");
 	}
 

@@ -141,6 +141,7 @@ export function App() {
 					<main className="main">
 						{chat.state ? (
 							<MessageList
+								key={chat.state.conversationId ?? "boot"}
 								state={chat.state}
 								liveOutputs={chat.liveOutputs}
 								onEdit={onEditMessage}

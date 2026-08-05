@@ -72,6 +72,8 @@ export interface UiState {
 	cwd: string;
 	sessionId: string;
 	sessionFile?: string;
+	/** Id of the ACTIVE open conversation (see `conversations` message). */
+	conversationId: string;
 	messages: UiMessage[];
 	/**
 	 * Live partial assistant message while a run is streaming (server sends the
@@ -159,6 +161,7 @@ export type ClientMessage =
 	| { type: "get_state" }
 	| { type: "list_sessions" }
 	| { type: "switch_session"; path: string }
+	| { type: "switch_conversation"; id: string }
 	| { type: "list_projects" }
 	| { type: "list_files"; path?: string }
 	/** Read a workspace file for the preview panel (size-capped, binary-safe). */
@@ -199,6 +202,16 @@ export interface ProjectSummary {
 	path: string;
 	/** Last time this workspace was used (ms epoch) — drives the sort order. */
 	lastUsed: number;
+}
+
+/** One open conversation of the client (each runs its own session, in parallel). */
+export interface ConversationSummary {
+	id: string;
+	/** Display title: first user prompt (truncated) or the default. */
+	title: string;
+	cwd: string;
+	messageCount: number;
+	isStreaming: boolean;
 }
 
 export interface FileEntry {
@@ -275,6 +288,7 @@ export interface ProviderStatus {
 export type ServerMessage =
 	| { type: "ready"; clientId: string; serverVersion: string }
 	| { type: "snapshot"; state: UiState }
+	| { type: "conversations"; conversations: ConversationSummary[]; activeId: string }
 	| { type: "tool_delta"; toolCallId: string; toolName: string; delta: string }
 	// -- terminal ------------------------------------------------------------
 	| { type: "terminal_output"; terminalId: string; data: string }
