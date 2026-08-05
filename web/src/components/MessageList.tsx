@@ -2,11 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiArrowDown } from "react-icons/fi";
 import type { UiMessage, UiState } from "../types";
 import { Message } from "./Message";
+import { CollapsedMessage } from "./CollapsedMessage";
 import { useT, type Translate } from "../i18n";
 
 /** Stable shared empty map — passing this (instead of a fresh Map) lets
  *  React.memo skip messages that have no live tool output to show. */
 const EMPTY_LIVE = new Map<string, { toolName: string; text: string }>();
+
+/**
+ * Messages beyond the most recent KEEP_RECENT are rendered as cheap collapsed
+ * summary rows (no Markdown / thinking / tool output) until clicked. Only kicks
+ * in once the chat grows past COLLAPSE_MIN, so short conversations are untouched.
+ */
+const KEEP_RECENT = 15;
+const COLLAPSE_MIN = 30;
 
 function hasToolCall(m: UiMessage): boolean {
 	return m.content.some((b) => b.type === "toolCall");
@@ -45,6 +54,8 @@ export function MessageList({ state, liveOutputs, onEdit }: MessageListProps) {
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [stickBottom, setStickBottom] = useState(true);
 	const stickRef = useRef(true);
+	/** Messages the user expanded from the collapsed view — stay expanded. */
+	const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 	/** Persisted messages + the live in-progress assistant message (if any). */
 	const messages = state.streamingMessage
 		? [...state.messages, state.streamingMessage]
@@ -63,6 +74,24 @@ export function MessageList({ state, liveOutputs, onEdit }: MessageListProps) {
 		return m;
 	}, [state.messages]);
 	const lastId = messages.length > 0 ? messages[messages.length - 1].id : null;
+	// Only the last KEEP_RECENT persisted messages are fully rendered; older
+	// ones collapse to summary rows (unless the user expanded them).
+	const recentStart =
+		state.messages.length > COLLAPSE_MIN
+			? Math.max(0, state.messages.length - KEEP_RECENT)
+			: 0;
+
+	const expand = useCallback((id: string) => {
+		setExpanded((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+	}, []);
+	const collapse = useCallback((id: string) => {
+		setExpanded((prev) => {
+			if (!prev.has(id)) return prev;
+			const next = new Set(prev);
+			next.delete(id);
+			return next;
+		});
+	}, []);
 
 	const onScroll = useCallback(() => {
 		const el = scrollRef.current;
@@ -120,17 +149,34 @@ export function MessageList({ state, liveOutputs, onEdit }: MessageListProps) {
 						</div>
 					</div>
 				)}
-				{state.messages.map((m) => (
-					<Message
-						key={m.id}
-						message={m}
-						toolResults={toolResults}
-						liveOutputs={hasToolCall(m) ? liveOutputs : EMPTY_LIVE}
-						streaming={state.isStreaming}
-						isLast={m.id === lastId}
-						onEdit={onEdit}
-					/>
-				))}
+				{state.messages.map((m, i) => {
+					const isOld = i < recentStart;
+					const isExpandedOld = isOld && expanded.has(m.id);
+					if (isOld && !isExpandedOld) {
+						// toolResult content lives inside its toolCall card — nothing to
+						// show in the collapsed row either.
+						if (m.role === "toolResult") return null;
+						return (
+							<CollapsedMessage
+								key={m.id}
+								message={m}
+								onExpand={expand}
+							/>
+						);
+					}
+					return (
+						<Message
+							key={m.id}
+							message={m}
+							toolResults={toolResults}
+							liveOutputs={hasToolCall(m) ? liveOutputs : EMPTY_LIVE}
+							streaming={state.isStreaming}
+							isLast={m.id === lastId}
+							onEdit={onEdit}
+							onCollapse={isExpandedOld ? collapse : undefined}
+						/>
+					);
+				})}
 				{state.streamingMessage && (
 					<Message
 						key={state.streamingMessage.id}

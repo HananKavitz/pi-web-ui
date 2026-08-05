@@ -1,5 +1,10 @@
 import { memo, useState } from "react";
-import { FiChevronDown, FiChevronRight, FiEdit3 } from "react-icons/fi";
+import {
+	FiChevronDown,
+	FiChevronRight,
+	FiChevronUp,
+	FiEdit3,
+} from "react-icons/fi";
 import type {
 	UiBashBlock,
 	UiContentBlock,
@@ -66,6 +71,8 @@ interface MessageProps {
 	isLast: boolean;
 	/** Edit-and-re-ask handler (user messages only). Stable identity — Message is memoized. */
 	onEdit?: (messageId: string, text: string) => void;
+	/** When set, shows a collapse button (message was expanded from the collapsed view). */
+	onCollapse?: (messageId: string) => void;
 }
 
 export const Message = memo(function Message({
@@ -75,6 +82,7 @@ export const Message = memo(function Message({
 	streaming,
 	isLast,
 	onEdit,
+	onCollapse,
 }: MessageProps) {
 	const t = useT();
 	// Inline edit-and-re-ask editor (user messages only).
@@ -122,6 +130,16 @@ export const Message = memo(function Message({
 				{message.model && <span className="msg-model">{message.model}</span>}
 				{message.timestamp && (
 					<span className="msg-time">{formatTime(message.timestamp)}</span>
+				)}
+				{onCollapse && (
+					<button
+						type="button"
+						className="msg-collapse-btn"
+						title={t("collapseMsg")}
+						onClick={() => onCollapse(message.id)}
+					>
+						<FiChevronUp /> {t("collapseMsg")}
+					</button>
 				)}
 			</div>
 			<div className="msg-body">
@@ -383,7 +401,7 @@ function Block({
 	return null;
 }
 
-function roleLabel(role: string, t: Translate): string {
+export function roleLabel(role: string, t: Translate): string {
 	switch (role) {
 		case "user":
 			return t("role.user");

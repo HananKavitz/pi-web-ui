@@ -101,6 +101,13 @@ const zh = {
 	editPlaceholder: "修改问题内容…",
 	editHint: "⌘/Ctrl+Enter 提交 · Esc 取消",
 
+	/* collapsed old messages */
+	expandMsg: "展开",
+	collapseMsg: "收起",
+	toolCalls: "工具调用",
+	bashRuns: "终端运行",
+	images: "图片",
+
 	/* right panel */
 	files: "文件",
 	refreshFiles: "刷新文件列表",
@@ -365,6 +372,13 @@ const en: Record<keyof typeof zh, string> = {
 	reaskFromHere: "Re-ask from here",
 	editPlaceholder: "Edit the question…",
 	editHint: "⌘/Ctrl+Enter to submit · Esc to cancel",
+
+	/* collapsed old messages */
+	expandMsg: "Expand",
+	collapseMsg: "Collapse",
+	toolCalls: "tool calls",
+	bashRuns: "bash runs",
+	images: "images",
 
 	/* right panel */
 	files: "Files",
