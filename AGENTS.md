@@ -60,6 +60,8 @@ pi-web-ui/
 │   │   ├── i18n.tsx            # ★ 中英文案（zh 默认），新增 key 必须两处都加
 │   │   ├── styles.css          # ★ 全部样式（按组件分区，带注释分隔线）
 │   │   ├── sounds.ts           # WebAudio 提示音
+│   │   ├── upload.ts           # 拖放上传：uploadFile（fetch 流式 POST /api/upload）+
+│   │   │                       #   collectDroppedFiles（webkitGetAsEntry 递归收集目录）
 │   │   └── components/         # 见下
 │   └── dist/                   # 构建产物（gitignore，但打进 npm 包）
 ├── bin/pi-web-ui.mjs           # CLI：前台启动 / --port --cwd --data-dir / server install|uninstall|start|stop|restart|status
@@ -84,6 +86,7 @@ pi-web-ui/
 | `TopBar.tsx` / `FooterBar.tsx` | 顶栏（模型/思考强度/声音/新对话/视图切换）、底栏（上下文/成本/工作目录） |
 | `Dialog.tsx` | 扩展 `ui.select/confirm/input` → 浏览器弹窗 |
 | `ModelConfigModal.tsx` / `PiSetupModal.tsx` | models.json 管理 / 首次配置引导 |
+| `DropOverlay.tsx` | 拖放提示层（pointer-events none 全窗覆盖，指示复制/引用） |
 | `Markdown.tsx` / `Dropdown.tsx` / `copy-button.tsx` / `SoundSettings.tsx` | 通用件 |
 
 ## 4. 核心架构（改代码前必读）
@@ -122,6 +125,25 @@ pi-web-ui/
   路径按**该客户端的会话 cwd**（打开的项目）解析，而非服务启动目录——两者可能不一致；
   `clientId` 缺失或会话不存在时回退到服务启动 `CWD`。路径校验统一走 `workspacePath()`（agent-service 导出）。
 - 行号语义：**尾随换行不产生空行**（`countLines` 已修正），前后端 split 逻辑必须一致。
+
+### 终端
+### 拖放上传（OS 文件管理器 → 页面）
+
+- **机制**：浏览器拿不到文件绝对路径，所以走 HTTP 上传。`POST /api/upload`
+  （`server/index.ts`）：body 为原始字节流（不经 WS，大文件不占 socket），
+  query `clientId` + `destDir`（工作区相对目录，"" = 工作区根），header
+  `X-File-Name` / `X-File-Rel-Path`（URI 编码）。路径全部过 `workspacePath()`
+  校验；目标目录自动 `mkdir -p`；重名自动加 ` (1)` 后缀不覆盖；返回
+  `{ ok, path, name, size }`。
+- **拖到右栏文件面板**（`RightPanel.tsx`）：复制到当前目录或悬停的文件夹行
+  （行高亮 `.file-item.dir.drop-target`），完成后 `list_files` 刷新。
+- **拖到对话区/输入框**（`App.tsx` 的 `<main>`）：上传到工作区内的
+  `.pi-web/uploads/`（已被 gitignore）暂存，再把顶层拖入项（文件或文件夹）
+  作为 reference 附件加进输入框；提示文案见 i18n `drop*` key。
+- 目录拖入用 `webkitGetAsEntry()` 递归遍历（`web/src/upload.ts`），目录结构
+  通过 `X-File-Rel-Path` 在服务端重建；无 entry API 时回退 `dt.files`。
+- 全局 window `dragover`/`drop` preventDefault 阻止浏览器直接打开文件；
+  提示层 `DropOverlay` 全窗覆盖但 `pointer-events: none`，drop 落在下层区域。
 
 ### 终端
 

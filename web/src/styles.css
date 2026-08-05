@@ -509,6 +509,18 @@ body {
 .file-item.dir {
 	cursor: default;
 }
+
+/* OS drag & drop: the folder row under the cursor is highlighted so it's clear
+   where the files will be copied. */
+.file-item.dir.drop-target {
+	outline: 1.5px dashed var(--green);
+	outline-offset: -1.5px;
+	background: rgba(52, 211, 153, 0.08);
+}
+.panel.drag-over {
+	outline: 1.5px dashed var(--accent);
+	outline-offset: -2px;
+}
 .file-dir-main {
 	flex: 1;
 	min-width: 0;
@@ -662,13 +674,14 @@ body {
 	color: #fff;
 }
 
-/* eye icon : open the preview modal */
-.file-attach.preview {
-	background: rgba(96, 165, 250, 0.14);
-	color: var(--accent);
+/* download icon : save the file (any kind, incl. binary/archives) */
+.file-attach.download {
+	background: rgba(52, 211, 153, 0.14);
+	color: var(--green);
+	text-decoration: none;
 }
-.file-attach.preview:hover {
-	background: var(--accent);
+.file-attach.download:hover {
+	background: var(--green);
 	color: #fff;
 }
 
@@ -3511,4 +3524,38 @@ body {
 	display: inline-flex;
 	align-items: center;
 	gap: 5px;
+}
+
+/* ------------------------------------------------------------------ */
+/* OS file drag & drop overlay                                          */
+/* ------------------------------------------------------------------ */
+/* Full-window hint while dragging files from Finder/Explorer. It is
+   pointer-events: none so the drop lands on the zone underneath, which
+   performs the upload. */
+.drop-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 100;
+	pointer-events: none;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(0, 0, 0, 0.25);
+}
+.drop-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	padding: 14px 26px;
+	border-radius: 12px;
+	background: var(--bg-elev2);
+	border: 1.5px dashed var(--accent);
+	box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+	color: var(--text);
+	font-size: 15px;
+	font-weight: 600;
+}
+.drop-pill svg {
+	color: var(--accent);
+	font-size: 18px;
 }
