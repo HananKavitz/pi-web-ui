@@ -124,7 +124,7 @@ const zh = {
 	updateAvailable: "发现新版本 v{version}",
 	updateNow: "立即更新",
 	confirmUpdate: "确认更新（覆盖全局安装）",
-	updateSuccess: "✅ 已更新，重启服务后生效",
+	updateSuccess: "✅ 已更新，正在重启…",
 	updateFailed: "更新失败：{detail}",
 	restartHint: "重启：pi-web-ui server restart",
 
@@ -417,7 +417,7 @@ const en: Record<keyof typeof zh, string> = {
 	updateAvailable: "New version v{version} available",
 	updateNow: "Update now",
 	confirmUpdate: "Confirm (replaces global install)",
-	updateSuccess: "✅ Updated — restart the server to apply",
+	updateSuccess: "✅ Updated — restarting…",
 	updateFailed: "Update failed: {detail}",
 	restartHint: "Restart: pi-web-ui server restart",
 

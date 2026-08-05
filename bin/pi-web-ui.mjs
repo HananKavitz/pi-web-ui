@@ -394,7 +394,7 @@ User=${process.env.SUDO_USER ?? userInfo().username}
 WorkingDirectory=${cwd}
 ${envLines}
 ExecStart=${JSON.stringify(NODE)} ${JSON.stringify(SERVER_ENTRY)}
-Restart=on-failure
+Restart=always
 RestartSec=5
 
 [Install]

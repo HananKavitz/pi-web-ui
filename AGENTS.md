@@ -46,7 +46,9 @@ pi-web-ui/
 │   │                           #   · 编辑重问（edit_message）：按消息 id 解析 entryId → runtime.fork
 │   │                           #     新建分支会话（保留该问题之前的历史，原对话不动）→ 重新 prompt
 │   │                           #   · 自更新（check_update/update_app）：读自身 package.json 版本，
-│   │                           #     对比 npm registry，npm i -g 升级后提示重启服务
+│   │                           #     对比 npm registry，npm i -g 升级后自动重启（launchd KeepAlive /
+│   │                           #     systemd Restart 退出即拉起；前台派生子进程等旧进程释放端口后接管；
+│   │                           #     Docker 容器内提示外部重启）
 │   ├── serialize.ts            # SDK 消息 → UiMessage 序列化（截断、稳定 id、对象缓存）
 │   └── terminals.ts            # TerminalManager（PTY 生命周期）+ .pi/commands.json 读写
 ├── web/                        # 前端（React + Vite，编译到 web/dist/）
@@ -226,10 +228,11 @@ curl -s https://registry.npmjs.org/pi-web-ui/latest | jq .version
 - `.pi/commands.json` 是**每个项目各自**的个人命令（当前 cwd 的 `.pi/ 下），已被 gitignore，永远不会进公开仓库；
   切换 cwd 时命令列表自动刷新为该项目的命令。
 - 大改动发布前先问用户是否要 `npm publish`（会真实消耗账号权限、触发构建）。
-- **服务方式部署的实例升级后必须重启**：`npm i -g` 只更新磁盘文件，已运行进程内存里还是旧代码——
-  前端是每次请求实时读盘的（会先变新），但 WS 消息处理是进程内旧逻辑，新旧混跑会表现为
-  「界面是新的、某功能一直加载中」。重启：`pi-web-ui server restart`（launchd/systemd）
-  或重启前台进程。
+- **升级后自动重启**：`npm i -g` 只更新磁盘文件，已运行进程内存里还是旧代码——前端是每次
+  请求实时读盘的（会先变新），但 WS 消息处理是进程内旧逻辑，新旧混跑会表现为「界面是新的、
+  某功能一直加载中」。因此界面内「立即更新」成功后会自动重启（launchd KeepAlive / systemd
+  Restart 退出即拉起，前台派生子进程接管；Docker 容器内需 `docker compose restart`），
+  无需手动操作。
 
 ## 7. 环境变量
 

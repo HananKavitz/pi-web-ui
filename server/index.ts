@@ -15,6 +15,8 @@
 import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
+import { createConnection } from "node:net";
+import { spawn } from "node:child_process";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -120,6 +122,53 @@ const service = new AgentService(
 	// Per-client persisted UI state: last-used workspace + recent projects.
 	join(DATA_DIR, "client-state.json"),
 );
+
+// ---------------------------------------------------------------------------
+// Self-update auto-restart
+// ---------------------------------------------------------------------------
+// npm i -g writes new code to disk but the running process keeps the old
+// code in memory — so a successful in-app update hands the process over:
+//   macOS launchd (KeepAlive) and systemd (Restart) relaunch us on exit;
+//   foreground runs get a replacement child that waits for our port to free.
+// Docker containers can't self-restart (the orchestrator owns that), so they
+// keep the manual-restart notice.
+const RESTART_CHILD_ENV = "PI_WEB_RESTART_CHILD";
+
+function scheduleUpdateRestart(): boolean {
+	const isLaunchd = process.platform === "darwin" && process.ppid === 1;
+	const isSystemd = process.platform === "linux" && !!process.env.INVOCATION_ID;
+	const inDocker = existsSync("/.dockerenv");
+	if (isLaunchd || isSystemd || inDocker) {
+		// Supervisors relaunch on exit; Docker restarts externally. Nothing to
+		// spawn — just exit after the notice has flushed.
+		if (isLaunchd || isSystemd) {
+			setTimeout(() => {
+				console.log("update applied — auto-restarting…");
+				if (isSystemd) {
+					// Non-zero exit: legacy units use Restart=on-failure.
+					process.exit(3);
+				}
+				void shutdown();
+			}, 1500);
+			return true;
+		}
+		return false;
+	}
+	// Foreground / Windows: spawn a replacement from the updated install and
+	// exit. Same stdio (logs keep flowing), same args/env (port, cwd, data
+	// dir…); the child waits for this port to free before binding.
+	setTimeout(() => {
+		console.log("update applied — spawning replacement…");
+		spawn(process.execPath, process.argv.slice(1), {
+			stdio: "inherit",
+			env: { ...process.env, [RESTART_CHILD_ENV]: "1" },
+			...(process.platform === "win32" ? { windowsHide: true } : {}),
+		});
+		void shutdown();
+	}, 1500);
+	return true;
+}
+service.onUpdateReady = scheduleUpdateRestart;
 
 wss.on("connection", (ws) => {
 	let clientId: string | null = null;
@@ -305,6 +354,30 @@ wss.on("connection", (ws) => {
 		if (clientId) service.detach(clientId, send);
 	});
 });
+
+// When spawned by the old process as an auto-restart replacement, wait for
+// the old instance to release the port before binding (it exits right after
+// spawning us). Probe by attempting a connection: refused = free.
+if (process.env[RESTART_CHILD_ENV] === "1") {
+	const deadline = Date.now() + 20_000;
+	const portFree = () =>
+		new Promise<boolean>((resolve) => {
+			const sock = createConnection({ port: PORT, host: "127.0.0.1" });
+			sock.once("connect", () => {
+				sock.destroy();
+				resolve(false); // busy — old instance still up
+			});
+			sock.once("error", () => resolve(true)); // refused → free
+			sock.setTimeout(500, () => {
+				sock.destroy();
+				resolve(false);
+			});
+		});
+	while (Date.now() < deadline) {
+		if (await portFree()) break;
+		await new Promise((r) => setTimeout(r, 300));
+	}
+}
 
 httpServer.listen(PORT, () => {
 	console.log("");

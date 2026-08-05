@@ -1120,6 +1120,11 @@ export class ClientSession {
 
 	/** True once updateApp succeeded — the process must restart to run new code. */
 	private pendingRestart = false;
+	/**
+	 * Set by index.ts: called after a successful self-update; returns whether
+	 * the process is going to restart itself (so the notice can say so).
+	 */
+	onUpdateReady: (() => boolean) | undefined = undefined;
 
 	/** Ask the npm registry for the latest pi-web-ui version and report it. */
 	async checkUpdate(): Promise<void> {
@@ -1172,10 +1177,13 @@ export class ClientSession {
 					ok: true,
 					detail: out.slice(0, 400),
 				});
+				const autoRestart = this.onUpdateReady?.() ?? false;
 				this.emit({
 					type: "notice",
 					level: "info",
-					text: "✅ 已更新 pi-web-ui，重启服务后生效（pi-web-ui server restart）",
+					text: autoRestart
+						? "✅ 已更新 pi-web-ui，正在自动重启…"
+						: "✅ 已更新 pi-web-ui，重启服务后生效（pi-web-ui server restart）",
 				});
 			} else {
 				this.emit({
@@ -2596,6 +2604,11 @@ export class AgentService {
 	private clients = new Map<string, ClientSession>();
 	private pending = new Map<string, Promise<ClientSession>>();
 	private stateStore: ClientStateStore;
+	/**
+	 * Set by index.ts: called by a client session after a successful
+	 * self-update; returns whether the process will restart itself.
+	 */
+	onUpdateReady: (() => boolean) | undefined = undefined;
 
 	constructor(
 		private cwd: string,
@@ -2650,6 +2663,8 @@ export class AgentService {
 			}
 		}
 		cs.attachSink(send);
+		// Forward the update hook (set once by index.ts) to every session.
+		cs.onUpdateReady = this.onUpdateReady;
 		return cs;
 	}
 
