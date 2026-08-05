@@ -115,6 +115,9 @@ pi-web-ui/
 - 客户端发 `{ type: "read_file", path }` → 服务端回 `{ type: "file_content", path, name, text, truncated, binary, lines, size }`。
 - 只读文件前 **512KB**（`MAX_PREVIEW_BYTES`）；含 NUL 字节判为二进制返回 `binary: true`；
   路径经 `resolve + relative` 校验，`..` 越界直接拒。
+- **媒体预览走 HTTP**：image/video 经 `/api/file?clientId=…&path=…` 流式返回（`sendFile` 支持 Range），
+  路径按**该客户端的会话 cwd**（打开的项目）解析，而非服务启动目录——两者可能不一致；
+  `clientId` 缺失或会话不存在时回退到服务启动 `CWD`。路径校验统一走 `workspacePath()`（agent-service 导出）。
 - 行号语义：**尾随换行不产生空行**（`countLines` 已修正），前后端 split 逻辑必须一致。
 
 ### 终端

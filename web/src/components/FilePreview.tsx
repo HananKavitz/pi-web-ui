@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { FiCheck, FiLink, FiPlus, FiX } from "react-icons/fi";
 import type { ClientMessage, FileContent } from "../types";
 import { useT } from "../i18n";
+import { getClientId } from "../use-chat";
 
 /** Cap rendered lines so a pathological file can't freeze the modal. */
 const MAX_PREVIEW_LINES = 5000;
@@ -142,7 +143,10 @@ export function FilePreview({
 	// Preview category from the server ("text" while loading). Media kinds are
 	// streamed over the /api/file HTTP endpoint; "none" is never previewable.
 	const kind = loaded?.kind ?? "text";
-	const mediaUrl = (p: string) => `/api/file?path=${encodeURIComponent(p)}`;
+	// /api/file resolves against the requesting client's workspace (the opened
+	// project), not the server's startup cwd — pass clientId so they can differ.
+	const mediaUrl = (p: string) =>
+		`/api/file?clientId=${encodeURIComponent(getClientId())}&path=${encodeURIComponent(p)}`;
 
 	return (
 		<div

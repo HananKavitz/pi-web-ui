@@ -15,13 +15,13 @@
 import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import express from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { VERSION } from "@earendil-works/pi-coding-agent";
-import { AgentService, previewKind } from "./agent-service.js";
+import { AgentService, previewKind, workspacePath } from "./agent-service.js";
 import type { ClientMessage, ServerMessage } from "./protocol.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -45,12 +45,18 @@ app.get("/api/health", (_req, res) => {
 app.get("/api/file", async (req, res) => {
 	try {
 		const raw = typeof req.query.path === "string" ? req.query.path : "";
-		const abs = resolve(CWD, raw);
-		const rel = relative(CWD, abs);
-		if (rel.startsWith("..") || rel.includes(`${sep}..`)) {
+		// Resolve against the requesting client's workspace (the opened
+		// project), not the server's startup cwd — they can differ when the
+		// client switched projects or restored a previous workspace. Fall
+		// back to the server cwd for requests without a known client.
+		const cid = typeof req.query.clientId === "string" ? req.query.clientId : "";
+		const cs = cid ? service.get(cid) : undefined;
+		const wp = workspacePath(cs?.cwd ?? CWD, raw);
+		if (!wp) {
 			res.status(400).end("path outside workspace");
 			return;
 		}
+		const abs = wp.abs;
 		const name = basename(abs);
 		const kind = previewKind(name);
 		if (kind !== "image" && kind !== "video") {

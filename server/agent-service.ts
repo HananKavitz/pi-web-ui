@@ -17,7 +17,7 @@ import {
 	writeFileSync,
 	mkdirSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	createAgentSessionFromServices,
@@ -524,6 +524,21 @@ function extractPartialText(partial: unknown): string | null {
 		return text.length > 0 ? text : null;
 	}
 	return null;
+}
+
+/**
+ * Resolve a workspace-relative path against a root, refusing traversal
+ * (".." escapes). Returns { abs, rel } — rel is normalized and slash-
+ * separated — or null when the path leaves the workspace.
+ */
+export function workspacePath(
+	root: string,
+	raw: string,
+): { abs: string; rel: string } | null {
+	const abs = resolve(root, raw);
+	const rel = relative(root, abs);
+	if (rel.startsWith("..") || rel.includes(`${sep}..`)) return null;
+	return { abs, rel };
 }
 
 // ---------------------------------------------------------------------------
@@ -2028,11 +2043,9 @@ export class ClientSession {
 	async readFile(relPath: string): Promise<void> {
 		try {
 			const fs = await import("node:fs/promises");
-			const { resolve, sep, relative } = await import("node:path");
 			const root = resolve(this.cwd);
-			const abs = resolve(root, relPath);
-			const rel = relative(root, abs);
-			if (rel.startsWith("..") || rel.includes(`${sep}..`)) {
+			const wp = workspacePath(root, relPath);
+			if (!wp) {
 				this.emit({
 					type: "notice",
 					level: "warning",
@@ -2040,6 +2053,7 @@ export class ClientSession {
 				});
 				return;
 			}
+			const { abs, rel } = wp;
 			const stat = await fs.stat(abs);
 			if (!stat.isFile()) {
 				this.emit({
