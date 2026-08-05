@@ -42,6 +42,8 @@ pi-web-ui/
 │   │                           #     重启后恢复上次工作目录；projects 消息推送最近项目列表）
 │   │                           #   · 编辑重问（edit_message）：按消息 id 解析 entryId → runtime.fork
 │   │                           #     新建分支会话（保留该问题之前的历史，原对话不动）→ 重新 prompt
+│   │                           #   · 自更新（check_update/update_app）：读自身 package.json 版本，
+│   │                           #     对比 npm registry，npm i -g 升级后提示重启服务
 │   ├── serialize.ts            # SDK 消息 → UiMessage 序列化（截断、稳定 id、对象缓存）
 │   └── terminals.ts            # TerminalManager（PTY 生命周期）+ .pi/commands.json 读写
 ├── web/                        # 前端（React + Vite，编译到 web/dist/）

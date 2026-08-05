@@ -21,6 +21,7 @@ your existing pi auth/config/extensions — nothing extra to install or configur
 - 📂 **Project memory**: the last workspace of each browser is remembered and restored on restart; a "Recent projects" list in the left panel switches workspaces in one click, and each project keeps its own sessions so you can always pick up an old conversation
 - ✏️ **Edit & re-ask**: every past question has an edit button — change it and re-ask from that point. The server forks a new branch session (keeping the full history before that question) while the original conversation stays untouched in the session list
 - ⚡ **Long chats stay fast**: past 30 messages, older messages collapse into summary rows (role + first-line preview + block counts — no Markdown/thinking/tool output rendered); click to expand the full content. The latest 15 messages always render in full
+- ⬇️ **Self-update**: the top-right corner shows the running version; the update panel checks npm for the latest release and can run `npm i -g` in one click (a restart is required to take effect)
 - 🔄 Model & thinking-level cycling (same as pi's TUI), new chat, abort/stop
 - 📎 Markdown rendering with GFM tables, syntax-highlighted code blocks and copy buttons
 - 📁 Workspace-aware: the agent reads/edits/runs code in a configurable directory using **your** `~/.pi/agent` auth, models, skills and extensions

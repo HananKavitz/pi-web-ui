@@ -108,6 +108,21 @@ const zh = {
 	bashRuns: "终端运行",
 	images: "图片",
 
+	/* self-update */
+	update: "更新",
+	updateTip: "检查并更新 pi-web-ui",
+	currentVersion: "当前版本",
+	latestVersion: "最新版本",
+	checkingUpdate: "检查中…",
+	checkUpdate: "检查更新",
+	upToDate: "已是最新版本",
+	updateAvailable: "发现新版本 v{version}",
+	updateNow: "立即更新",
+	confirmUpdate: "确认更新（覆盖全局安装）",
+	updateSuccess: "✅ 已更新，重启服务后生效",
+	updateFailed: "更新失败：{detail}",
+	restartHint: "重启：pi-web-ui server restart",
+
 	/* right panel */
 	files: "文件",
 	refreshFiles: "刷新文件列表",
@@ -379,6 +394,21 @@ const en: Record<keyof typeof zh, string> = {
 	toolCalls: "tool calls",
 	bashRuns: "bash runs",
 	images: "images",
+
+	/* self-update */
+	update: "Update",
+	updateTip: "Check & update pi-web-ui",
+	currentVersion: "Current version",
+	latestVersion: "Latest version",
+	checkingUpdate: "Checking…",
+	checkUpdate: "Check for updates",
+	upToDate: "You're up to date",
+	updateAvailable: "New version v{version} available",
+	updateNow: "Update now",
+	confirmUpdate: "Confirm (replaces global install)",
+	updateSuccess: "✅ Updated — restart the server to apply",
+	updateFailed: "Update failed: {detail}",
+	restartHint: "Restart: pi-web-ui server restart",
 
 	/* right panel */
 	files: "Files",

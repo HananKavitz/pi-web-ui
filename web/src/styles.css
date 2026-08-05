@@ -1527,6 +1527,80 @@ body {
 	color: var(--accent);
 }
 
+/* ------------------------------------------------------------ self-update */
+
+.update-dot {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--amber);
+	flex-shrink: 0;
+	box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+}
+
+.dd-update {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 8px 10px 10px;
+}
+
+.dd-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	font-size: 12.5px;
+	color: var(--text-dim);
+}
+.dd-row b {
+	color: var(--text);
+	font-family: var(--mono);
+	font-weight: 600;
+}
+
+.dd-note {
+	font-size: 12px;
+	line-height: 1.5;
+	padding: 6px 10px;
+	border-radius: 6px;
+	background: var(--bg-elev1);
+	border: 1px solid var(--border-soft);
+	color: var(--text-dim);
+}
+.dd-note.ok {
+	color: var(--green);
+	border-color: rgba(52, 211, 153, 0.3);
+}
+.dd-note.warn {
+	color: var(--amber);
+	border-color: rgba(245, 158, 11, 0.35);
+}
+.dd-note.err {
+	color: var(--red);
+	border-color: rgba(248, 113, 113, 0.35);
+}
+
+.dd-actions {
+	display: flex;
+	gap: 6px;
+	padding: 0 2px 2px;
+}
+.dd-actions .dd-refresh {
+	margin-top: 0;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-elev1);
+}
+.dd-refresh.accent {
+	color: var(--accent);
+	border-color: rgba(139, 92, 246, 0.4);
+}
+.dd-refresh.accent.armed {
+	color: var(--amber);
+	border-color: rgba(245, 158, 11, 0.5);
+}
+
 /* ----------------------------------------------------------------- notices */
 
 .notices {

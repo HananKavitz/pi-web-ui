@@ -17,7 +17,8 @@ import {
 	writeFileSync,
 	mkdirSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	createAgentSessionFromServices,
 	createAgentSessionRuntime,
@@ -966,6 +967,122 @@ export class ClientSession {
 	 * pi CLI globally (npm i -g). Auth is configured afterwards via the API key
 	 * form or by running `pi` in a terminal.
 	 */
+
+	/**
+	 * Version of the RUNNING pi-web-ui package (read from its own package.json,
+	 * resolved from this compiled module: <pkg>/dist/server → <pkg>).
+	 */
+	private static currentAppVersion(): string {
+		try {
+			const here = dirname(fileURLToPath(import.meta.url));
+			const pkgRoot = resolve(here, "..", "..");
+			const pkg = JSON.parse(
+				readFileSync(join(pkgRoot, "package.json"), "utf8"),
+			) as { version?: string };
+			return pkg.version ?? "0.0.0";
+		} catch {
+			return "0.0.0";
+		}
+	}
+
+	/** Simple numeric semver compare: >0 means a newer than b. */
+	private static compareVersions(a: string, b: string): number {
+		const pa = a.split(".").map((n) => parseInt(n, 10) || 0);
+		const pb = b.split(".").map((n) => parseInt(n, 10) || 0);
+		for (let i = 0; i < 3; i++) {
+			const x = pa[i] ?? 0;
+			const y = pb[i] ?? 0;
+			if (x !== y) return x - y;
+		}
+		return 0;
+	}
+
+	/** True once updateApp succeeded — the process must restart to run new code. */
+	private pendingRestart = false;
+
+	/** Ask the npm registry for the latest pi-web-ui version and report it. */
+	async checkUpdate(): Promise<void> {
+		const current = ClientSession.currentAppVersion();
+		try {
+			const res = await fetch("https://registry.npmjs.org/pi-web-ui/latest", {
+				signal: AbortSignal.timeout(8_000),
+			});
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const data = (await res.json()) as { version?: string };
+			const latest = data.version ?? null;
+			const upToDate =
+				latest === null || ClientSession.compareVersions(current, latest) >= 0;
+			this.emit({
+				type: "update_status",
+				current,
+				latest,
+				upToDate,
+				pendingRestart: this.pendingRestart,
+			});
+		} catch (err) {
+			this.emit({
+				type: "update_status",
+				current,
+				latest: null,
+				upToDate: false,
+				pendingRestart: this.pendingRestart,
+				error: `检查更新失败：${(err as Error).message}`,
+			});
+		}
+	}
+
+	/** npm i -g pi-web-ui@latest — the new code only takes effect after a restart. */
+	async updateApp(): Promise<void> {
+		try {
+			this.emit({
+				type: "notice",
+				level: "info",
+				text: "正在更新 pi-web-ui（npm i -g pi-web-ui@latest）…",
+			});
+			const { code, out } = await this.runAsync(
+				"npm",
+				["i", "-g", "pi-web-ui@latest"],
+				180_000,
+			);
+			if (code === 0) {
+				this.pendingRestart = true;
+				this.emit({
+					type: "update_result",
+					ok: true,
+					detail: out.slice(0, 400),
+				});
+				this.emit({
+					type: "notice",
+					level: "info",
+					text: "✅ 已更新 pi-web-ui，重启服务后生效（pi-web-ui server restart）",
+				});
+			} else {
+				this.emit({
+					type: "update_result",
+					ok: false,
+					detail: `npm i 失败（${code ?? "timeout"}）：${out.slice(0, 400)}`,
+				});
+				this.emit({
+					type: "notice",
+					level: "error",
+					text: `更新 pi-web-ui 失败（${code ?? "timeout"}）：${out.slice(0, 300)}`,
+				});
+			}
+		} catch (err) {
+			this.emit({
+				type: "update_result",
+				ok: false,
+				detail: String(err),
+			});
+			this.emit({
+				type: "notice",
+				level: "error",
+				text: `更新 pi-web-ui 失败：${(err as Error).message}`,
+			});
+		}
+		// Re-check so the UI reflects the new state (pendingRestart included).
+		void this.checkUpdate();
+	}
 	async installPiAgent(): Promise<void> {
 		try {
 			mkdirSync(this.agentDir, { recursive: true });

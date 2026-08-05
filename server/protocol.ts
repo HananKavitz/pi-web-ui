@@ -189,6 +189,11 @@ export type ClientMessage =
 	| { type: "set_cwd"; path: string }
 	| { type: "complete_path"; path: string }
 	| { type: "dialog_response"; id: number; value: string | boolean | null }
+	// -- self-update ----------------------------------------------------------
+	/** Check the npm registry for a newer pi-web-ui version. */
+	| { type: "check_update" }
+	/** npm i -g pi-web-ui@latest (restart required to take effect). */
+	| { type: "update_app" }
 	// -- pi agent setup ------------------------------------------------------
 	/** Auto-install the pi agent (mkdir config dir + npm i -g the CLI). */
 	| { type: "install_pi_agent" }
@@ -345,4 +350,18 @@ export type ServerMessage =
 			args: unknown[];
 	  }
 	/** The server resolved (or abandoned) a dialog — the client must close it. */
-	| { type: "dialog_closed"; id: number };
+	| { type: "dialog_closed"; id: number }
+	// -- self-update ----------------------------------------------------------
+	/** Result of a check_update run (current/latest from the npm registry). */
+	| {
+			type: "update_status";
+			/** Version of the RUNNING process (from its own package.json). */
+			current: string;
+			latest: string | null;
+			upToDate: boolean;
+			/** True after a successful update — restart required to take effect. */
+			pendingRestart: boolean;
+			error?: string;
+	  }
+	/** Result of an update_app run (npm i -g). */
+	| { type: "update_result"; ok: boolean; detail: string };

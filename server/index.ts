@@ -177,6 +177,12 @@ wss.on("connection", (ws) => {
 			case "complete_path":
 				void cs.completePath(msg.path);
 				break;
+			case "check_update":
+				void cs.checkUpdate();
+				break;
+			case "update_app":
+				void cs.updateApp();
+				break;
 			case "dialog_response":
 				cs.resolveDialog(msg.id, msg.value);
 				break;

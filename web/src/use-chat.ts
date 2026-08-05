@@ -62,6 +62,16 @@ export interface ChatState {
 	installResult: { ok: boolean; detail: string } | null;
 	/** Path completions for the cwd input. */
 	pathCompletions: { name: string; path: string; type: "dir" | "file" }[];
+	/** Self-update status (result of check_update). */
+	update: {
+		current: string;
+		latest: string | null;
+		upToDate: boolean;
+		pendingRestart: boolean;
+		error?: string;
+	} | null;
+	/** Result of an update_app run (npm i -g). */
+	updateResult: { ok: boolean; detail: string } | null;
 	/** Extension widgets (TUI overlays bridged to the web UI). */
 	widgets: { key: string; lines: string[] }[];
 	/** Extension footer statuses (setStatus bridge). */
@@ -99,6 +109,17 @@ type Action =
 			type: "path_completions";
 			completions: { name: string; path: string; type: "dir" | "file" }[];
 	  }
+	| {
+			type: "update_status";
+			status: {
+				current: string;
+				latest: string | null;
+				upToDate: boolean;
+				pendingRestart: boolean;
+				error?: string;
+			};
+	  }
+	| { type: "update_result"; result: { ok: boolean; detail: string } }
 	| { type: "widgets"; widgets: { key: string; lines: string[] }[] }
 	| { type: "statuses"; statuses: { key: string; text: string | undefined }[] }
 	| {
@@ -246,6 +267,10 @@ function reducer(state: ChatState, action: Action): ChatState {
 			return { ...state, installResult: action.result };
 		case "path_completions":
 			return { ...state, pathCompletions: action.completions };
+		case "update_status":
+			return { ...state, update: action.status };
+		case "update_result":
+			return { ...state, updateResult: action.result };
 		case "widgets":
 			return { ...state, widgets: action.widgets };
 		case "statuses":
@@ -323,6 +348,8 @@ export function useChat() {
 		providers: [],
 		installResult: null,
 		pathCompletions: [],
+		update: null,
+		updateResult: null,
 		widgets: [],
 		statuses: [],
 		dialog: null,
@@ -397,7 +424,7 @@ export function useChat() {
 					ws.send(
 						JSON.stringify({ type: "get_state" } satisfies ClientMessage),
 					);
-					// Refresh the side panels.
+					// Refresh the side panels + self-update status.
 					ws.send(
 						JSON.stringify({ type: "list_sessions" } satisfies ClientMessage),
 					);
@@ -412,6 +439,9 @@ export function useChat() {
 					);
 					ws.send(
 						JSON.stringify({ type: "list_commands" } satisfies ClientMessage),
+					);
+					ws.send(
+						JSON.stringify({ type: "check_update" } satisfies ClientMessage),
 					);
 					break;
 				case "snapshot":
@@ -463,6 +493,12 @@ export function useChat() {
 					break;
 				case "path_completions":
 					dispatch({ type: "path_completions", completions: msg.completions });
+					break;
+				case "update_status":
+					dispatch({ type: "update_status", status: msg });
+					break;
+				case "update_result":
+					dispatch({ type: "update_result", result: msg });
 					break;
 				case "widgets":
 					dispatch({ type: "widgets", widgets: msg.widgets });

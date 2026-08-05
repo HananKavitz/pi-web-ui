@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
 	FiCpu,
+	FiDownload,
 	FiGlobe,
 	FiMessageSquare,
 	FiPlus,
@@ -22,7 +23,9 @@ interface TopBarProps {
 			| { type: "set_model"; modelId: string }
 			| { type: "set_thinking"; level: string }
 			| { type: "new_chat" }
-			| { type: "list_models_config" },
+			| { type: "list_models_config" }
+			| { type: "check_update" }
+			| { type: "update_app" },
 	) => boolean;
 	view: "chat" | "terminal";
 	onViewChange: (view: "chat" | "terminal") => void;
@@ -63,6 +66,9 @@ export function TopBar({
 	const [thinkingOpen, setThinkingOpen] = useState(false);
 	const [soundOpen, setSoundOpen] = useState(false);
 	const [langOpen, setLangOpen] = useState(false);
+	const [updateOpen, setUpdateOpen] = useState(false);
+	/** Two-step arm before 立即更新 actually runs npm i -g. */
+	const [updateArmed, setUpdateArmed] = useState(false);
 	// Local loading flag for the model dropdown (list arrives via chat.models).
 	const [modelsLoading, setModelsLoading] = useState(false);
 
@@ -273,6 +279,104 @@ export function TopBar({
 					<FiPlus />
 					<span>{t("newChat")}</span>
 				</button>
+
+				<Dropdown
+					trigger={
+						<>
+							<FiDownload />
+							<span className="chip-sub">
+								v{chat.update?.current ?? "…"}
+							</span>
+							{chat.update && !chat.update.upToDate && !chat.update.pendingRestart && (
+								<span
+									className="update-dot"
+									title={t("updateAvailable", {
+										version: chat.update.latest ?? "",
+									})}
+								/>
+							)}
+						</>
+					}
+					open={updateOpen}
+					onOpenChange={(v) => {
+						setUpdateOpen(v);
+						setUpdateArmed(false);
+						if (v) send({ type: "check_update" });
+					}}
+				>
+					<div className="dd-header">{t("update")}</div>
+					<div className="dd-update">
+						<div className="dd-row">
+							<span>{t("currentVersion")}</span>
+							<b>v{chat.update?.current ?? "…"}</b>
+						</div>
+						<div className="dd-row">
+							<span>{t("latestVersion")}</span>
+							<b>
+								{chat.update === null
+									? t("checkingUpdate")
+									: chat.update.error
+										? chat.update.error
+										: chat.update.latest
+											? `v${chat.update.latest}`
+											: t("checkingUpdate")}
+							</b>
+						</div>
+						{chat.update?.pendingRestart && (
+							<div className="dd-note ok">{t("updateSuccess")}</div>
+						)}
+						{chat.update &&
+							!chat.update.pendingRestart &&
+							chat.update.upToDate && (
+								<div className="dd-note ok">{t("upToDate")}</div>
+							)}
+						{chat.update &&
+							!chat.update.pendingRestart &&
+							!chat.update.upToDate &&
+							chat.update.latest && (
+								<div className="dd-note warn">
+									{t("updateAvailable", { version: chat.update.latest })}
+								</div>
+							)}
+						{chat.updateResult && !chat.updateResult.ok && (
+							<div className="dd-note err">
+								{t("updateFailed", { detail: chat.updateResult.detail })}
+							</div>
+						)}
+						{chat.update?.pendingRestart && (
+							<div className="dd-note">{t("restartHint")}</div>
+						)}
+					</div>
+					<div className="dd-actions">
+						<button
+							type="button"
+							className="dd-refresh"
+							onClick={() => send({ type: "check_update" })}
+						>
+							{chat.update === null ? t("checkingUpdate") : t("checkUpdate")}
+						</button>
+						{chat.update &&
+							!chat.update.pendingRestart &&
+							!chat.update.upToDate &&
+							chat.update.latest && (
+								<button
+									type="button"
+									className={`dd-refresh accent ${updateArmed ? "armed" : ""}`}
+									onClick={() => {
+										if (!updateArmed) {
+											setUpdateArmed(true);
+											return;
+										}
+										setUpdateArmed(false);
+										setUpdateOpen(false);
+										send({ type: "update_app" });
+									}}
+								>
+									{updateArmed ? t("confirmUpdate") : t("updateNow")}
+								</button>
+							)}
+					</div>
+				</Dropdown>
 			</div>
 		</header>
 	);
