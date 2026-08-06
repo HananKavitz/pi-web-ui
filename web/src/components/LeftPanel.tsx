@@ -71,12 +71,11 @@ export function LeftPanel({ chat, send }: LeftPanelProps) {
 					})}
 				</div>
 			)}
-			<div className="panel-body">
-				{chat.conversations.length > 1 && (
-					<>
-						<div className="panel-section-title">
-							{t("openConversations")}
-						</div>
+			{chat.conversations.length > 1 && (
+				<div className="panel-convs">
+					<div className="panel-section-title">
+						{t("openConversations")}
+					</div>
 						{chat.conversations.map((c) => {
 							const active = chat.activeConversationId === c.id;
 							return (
@@ -113,13 +112,15 @@ export function LeftPanel({ chat, send }: LeftPanelProps) {
 								</button>
 							);
 						})}
-						<div className="panel-section-divider" />
-					</>
-				)}
+					<div className="panel-section-divider" />
+				</div>
+			)}
+			<div className="panel-sessions">
 				<div className="panel-section-title">{t("historySessions")}</div>
-				{sessions.length === 0 && (
-					<div className="panel-empty">{t("noHistory")}</div>
-				)}
+				<div className="sessions-scroll">
+					{sessions.length === 0 && (
+						<div className="panel-empty">{t("noHistory")}</div>
+					)}
 				{sessions.map((s) => {
 					const active = currentFile === s.path;
 					return (
@@ -150,6 +151,7 @@ export function LeftPanel({ chat, send }: LeftPanelProps) {
 						</button>
 					);
 				})}
+				</div>
 			</div>
 			<button
 				type="button"

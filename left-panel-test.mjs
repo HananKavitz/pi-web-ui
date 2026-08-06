@@ -61,7 +61,7 @@ for (let i = 0; i < 40 && !(await portUp()); i++) await sleep(250);
 const browser = await chromium.launch({ executablePath: HEADLESS });
 const page = await browser.newPage();
 await page.goto(URL);
-await page.waitForSelector(".panel-left .panel-body", { timeout: 15000 });
+await page.waitForSelector(".panel-left .panel-sessions", { timeout: 15000 });
 
 // Wait for the Chinese locale UI (conn label or section titles).
 await sleep(800);
