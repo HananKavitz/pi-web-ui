@@ -151,7 +151,8 @@ const zh = {
 	addedToChat: "已添加",
 	previewTruncated: "⚠ 文件过大，仅预览前 512KB",
 	previewLinesTruncated: "… 文件行数过多，仅显示前 {n} 行",
-	binaryFile: "二进制文件，无法预览",
+	binaryFile: "🔣 二进制文件，已显示前 4KB 十六进制",
+	binaryHexTruncated: "（文件更大，可下载完整文件）",
 	previewNotSupported: "该类型文件不支持预览（仅图片 / 视频 / 文本）",
 	emptyFile: "（空文件）",
 
@@ -446,7 +447,8 @@ const en: Record<keyof typeof zh, string> = {
 	addedToChat: "Added",
 	previewTruncated: "⚠ File too large — previewing the first 512KB",
 	previewLinesTruncated: "… too many lines — showing the first {n}",
-	binaryFile: "Binary file — preview not available",
+	binaryFile: "🔣 Binary file — first 4KB shown as hex",
+	binaryHexTruncated: " (file larger — download for the full file)",
 	previewNotSupported:
 		"This file type can't be previewed (only images / videos / text)",
 	emptyFile: "(empty file)",

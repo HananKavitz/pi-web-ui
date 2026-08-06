@@ -174,6 +174,7 @@ const PREVIEW_TEXT_EXTS = new Set([
 	"json",
 	"jsonc",
 	"json5",
+	"jsonl",
 	"md",
 	"mdx",
 	"markdown",
@@ -223,6 +224,44 @@ export function previewKind(name: string): PreviewKind {
 	if (PREVIEW_VIDEO_EXTS.has(ext)) return "video";
 	if (ext === "" || PREVIEW_TEXT_EXTS.has(ext)) return "text";
 	return "none";
+}
+
+/**
+ * Content sniff for the preview: any data that has no NUL bytes and no
+ * meaningful control-char ratio is treated as text — so files with unknown
+ * or absent extensions (jsonl, .log.1, …) still open as text. NULs catch
+ * zip/sqlite/png/… even when the extension claims text.
+ */
+function looksLikeText(buf: Buffer): boolean {
+	if (buf.length === 0) return true;
+	if (buf.includes(0)) return false;
+	const text = buf.toString("utf8");
+	let control = 0;
+	for (const ch of text) {
+		const c = ch.charCodeAt(0);
+		// Keep \t \n \r \f (and \b); everything else < 0x20 is binary-ish.
+		if (c < 0x20 && c !== 9 && c !== 10 && c !== 12 && c !== 13) control++;
+	}
+	return control / Math.max(text.length, 1) < 0.02;
+}
+
+/** First few KB of binary data as a classic hex + ASCII dump (preview only). */
+function hexDump(buf: Buffer, maxBytes = 4096): string {
+	const data = buf.subarray(0, Math.min(buf.length, maxBytes));
+	const rows: string[] = [];
+	for (let off = 0; off < data.length; off += 16) {
+		const chunk = data.subarray(off, off + 16);
+		const hex = [...chunk]
+			.map((b) => b.toString(16).padStart(2, "0"))
+			.join(" ");
+		const ascii = [...chunk]
+			.map((b) => (b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : "."))
+			.join("");
+		rows.push(
+			`${off.toString(16).padStart(8, "0")}  ${hex.padEnd(47, " ")}  ${ascii}`,
+		);
+	}
+	return rows.join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -2333,21 +2372,6 @@ export class ClientSession {
 			}
 			const name = relPath.split("/").pop() ?? relPath;
 			const kind = previewKind(name);
-			// Not previewable (exe, jar, archives, …) — never read or sent.
-			if (kind === "none") {
-				this.emit({
-					type: "file_content",
-					path: rel,
-					name,
-					text: "",
-					truncated: false,
-					binary: true,
-					kind: "none",
-					lines: 0,
-					size: stat.size,
-				});
-				return;
-			}
 			// Media previews stream over the /api/file HTTP endpoint, so only
 			// metadata is sent here — the raw bytes never touch the socket.
 			if (kind === "image" || kind === "video") {
@@ -2364,38 +2388,40 @@ export class ClientSession {
 				});
 				return;
 			}
-			// Text: read only the first MAX_PREVIEW_BYTES so huge files can't
-			// exhaust memory or flood the socket.
+			// Everything else: read a capped prefix and sniff the content.
+			// Anything that looks like text previews as text regardless of its
+			// extension (jsonl, .log.1, weird suffixes, …); binary content gets
+			// a hex dump of the first few KB instead of being refused.
 			const handle = await fs.open(abs, "r");
 			try {
 				const buf = Buffer.alloc(Math.min(stat.size, MAX_PREVIEW_BYTES));
 				const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
 				const data = buf.subarray(0, bytesRead);
-				if (data.includes(0)) {
+				if (looksLikeText(data)) {
 					this.emit({
 						type: "file_content",
 						path: rel,
 						name,
-						text: "",
-						truncated: false,
-						binary: true,
+						text: data.toString("utf8"),
+						truncated: bytesRead < stat.size,
+						binary: false,
 						kind: "text",
+						lines: countLines(data),
+						size: stat.size,
+					});
+				} else {
+					this.emit({
+						type: "file_content",
+						path: rel,
+						name,
+						text: hexDump(data),
+						truncated: bytesRead < stat.size,
+						binary: true,
+						kind: kind === "text" ? "text" : "none",
 						lines: 0,
 						size: stat.size,
 					});
-					return;
 				}
-				this.emit({
-					type: "file_content",
-					path: rel,
-					name,
-					text: data.toString("utf8"),
-					truncated: bytesRead < stat.size,
-					binary: false,
-					kind: "text",
-					lines: countLines(data),
-					size: stat.size,
-				});
 			} finally {
 				await handle.close();
 			}
@@ -2527,6 +2553,9 @@ export class ClientSession {
 			conv.runtime = newRuntime;
 			conv.session = newRuntime.session;
 			conv.cwd = abs;
+			// The rebuilt runtime resumed the new project's most recent session —
+			// refresh the title too, or the conversation list shows the old name.
+			conv.title = conversationTitle(newRuntime.session);
 			this.cwd = abs;
 			// Remember the new workspace (restore target + recent-project entry).
 			this.stateStore.remember(this.clientId, abs);

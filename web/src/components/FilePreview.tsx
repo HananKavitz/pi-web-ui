@@ -204,7 +204,7 @@ export function FilePreview({
 
 				{loading && !loaded && <div className="fp-empty">{t("loading")}</div>}
 
-				{!loading && kind === "none" && (
+				{!loading && kind === "none" && !isBinary && (
 					<div className="fp-empty">{t("previewNotSupported")}</div>
 				)}
 
@@ -229,9 +229,19 @@ export function FilePreview({
 					</div>
 				)}
 
-				{!loading && kind === "text" && isBinary && (
-					<div className="fp-empty">{t("binaryFile")}</div>
-				)}
+				{!loading &&
+					isBinary &&
+					kind !== "image" &&
+					kind !== "video" &&
+					loaded && (
+						<div className="fp-hex-wrap">
+							<div className="fp-notice">
+								{t("binaryFile")}
+								{loaded.truncated && t("binaryHexTruncated")}
+							</div>
+							<pre className="fp-hex">{loaded.text}</pre>
+						</div>
+					)}
 
 				{!loading &&
 					kind === "text" &&

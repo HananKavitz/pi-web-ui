@@ -122,7 +122,10 @@ pi-web-ui/
 ### 文件预览协议
 
 - 客户端发 `{ type: "read_file", path }` → 服务端回 `{ type: "file_content", path, name, text, truncated, binary, lines, size }`。
-- 只读文件前 **512KB**（`MAX_PREVIEW_BYTES`）；含 NUL 字节判为二进制返回 `binary: true`；
+- 只读文件前 **512KB**（`MAX_PREVIEW_BYTES`）；**内容嗅探决定文本还是二进制**：
+  无 NUL、控制字符占比 < 2% 即按文本预览（`looksLikeText`）——未知/无扩展名文件
+  （jsonl、.log.1 等）也能打开；二进制返回 `binary: true`，`text` 为前 4KB 的
+  **十六进制视图**（`hexDump`，前端 `.fp-hex` 渲染，可下载完整文件）。
   路径经 `resolve + relative` 校验，`..` 越界直接拒。
 - **媒体预览走 HTTP**：image/video 经 `/api/file?clientId=…&path=…` 流式返回（`sendFile` 支持 Range），
   路径按**该客户端的会话 cwd**（打开的项目）解析，而非服务启动目录——两者可能不一致；
