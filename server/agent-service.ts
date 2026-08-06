@@ -2116,6 +2116,30 @@ export class ClientSession {
 	}
 
 	async newChat(): Promise<void> {
+		// Reuse an already-open blank conversation instead of piling up new ones
+		// on every click: if the active chat has no messages it IS the new chat
+		// (focus already on it); otherwise switch to the first blank one.
+		const isBlank = (c: Conversation): boolean => {
+			try {
+				return c.session.getSessionStats().totalMessages === 0;
+			} catch {
+				// session being replaced — treat as used so we don't switch onto it
+				return false;
+			}
+		};
+		const active = this.conv;
+		if (active && isBlank(active)) {
+			this.flushSnapshot();
+			return;
+		}
+		for (const conv of this.convs.values()) {
+			if (conv.id === this.activeId) continue;
+			if (isBlank(conv)) {
+				await this.switchConversation(conv.id);
+				this.flushSnapshot();
+				return;
+			}
+		}
 		if (this.convs.size >= MAX_OPEN_CONVERSATIONS) {
 			this.emit({
 				type: "notice",
