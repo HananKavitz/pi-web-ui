@@ -1173,6 +1173,43 @@ export class ClientSession {
 		}
 	}
 
+	/**
+	 * After `npm i -g`, confirm the on-disk package this process serves from
+	 * actually changed to the new version and is complete. Windows npm updates
+	 * can fail partway (locked files / Defender / npm rollback) and leave the
+	 * global install without its bin links — restarting into that is a silent
+	 * crash (web/dist missing + `pi-web-ui` no longer on PATH). Returns null
+	 * when OK, else a human-readable problem description.
+	 */
+	private static verifyGlobalInstall(): string | null {
+		try {
+			const here = dirname(fileURLToPath(import.meta.url));
+			const pkgRoot = resolve(here, "..", "..");
+			const pkg = JSON.parse(
+				readFileSync(join(pkgRoot, "package.json"), "utf8"),
+			) as { version?: string };
+			if (!pkg.version || pkg.version === ClientSession.currentAppVersion()) {
+				return `安装目录版本未变化（${pkg.version ?? "未知"}）`;
+			}
+			if (!existsSync(join(pkgRoot, "web", "dist", "index.html"))) {
+				return "web/dist/index.html 缺失（前端产物未安装完整）";
+			}
+			if (!existsSync(join(pkgRoot, "bin", "pi-web-ui.mjs"))) {
+				return "bin/pi-web-ui.mjs 缺失";
+			}
+			if (process.platform === "win32") {
+				const prefix = dirname(process.execPath);
+				const hasShim =
+					existsSync(join(prefix, "pi-web-ui.cmd")) ||
+					existsSync(join(prefix, "pi-web-ui.ps1"));
+				if (!hasShim) return "pi-web-ui 命令入口（bin 链接）未生成";
+			}
+			return null;
+		} catch (err) {
+			return `读取安装目录失败：${(err as Error).message}`;
+		}
+	}
+
 	/** npm i -g pi-web-ui@latest — the new code only takes effect after a restart. */
 	async updateApp(): Promise<void> {
 		try {
@@ -1186,22 +1223,7 @@ export class ClientSession {
 				["i", "-g", "pi-web-ui@latest"],
 				180_000,
 			);
-			if (code === 0) {
-				this.pendingRestart = true;
-				this.emit({
-					type: "update_result",
-					ok: true,
-					detail: out.slice(0, 400),
-				});
-				const autoRestart = this.onUpdateReady?.() ?? false;
-				this.emit({
-					type: "notice",
-					level: "info",
-					text: autoRestart
-						? "✅ 已更新 pi-web-ui，正在自动重启…"
-						: "✅ 已更新 pi-web-ui，重启服务后生效（pi-web-ui server restart）",
-				});
-			} else {
+			if (code !== 0) {
 				this.emit({
 					type: "update_result",
 					ok: false,
@@ -1212,7 +1234,39 @@ export class ClientSession {
 					level: "error",
 					text: `更新 pi-web-ui 失败（${code ?? "timeout"}）：${out.slice(0, 300)}`,
 				});
+				return;
 			}
+			// npm reported success, but on Windows the replacement can be partial
+			// (locked files, rollback) — restarting into a broken install is a
+			// crash with no hint. Verify before handing over.
+			const problem = ClientSession.verifyGlobalInstall();
+			if (problem) {
+				this.emit({
+					type: "update_result",
+					ok: false,
+					detail: `npm i 成功但安装不完整（${problem}）。请手动执行 npm i -g pi-web-ui@latest 修复后再重启服务。`,
+				});
+				this.emit({
+					type: "notice",
+					level: "error",
+					text: `更新未完整生效（${problem}）。请手动执行 npm i -g pi-web-ui@latest 修复`,
+				});
+				return;
+			}
+			this.pendingRestart = true;
+			this.emit({
+				type: "update_result",
+				ok: true,
+				detail: out.slice(0, 400),
+			});
+			const autoRestart = this.onUpdateReady?.() ?? false;
+			this.emit({
+				type: "notice",
+				level: "info",
+				text: autoRestart
+					? "✅ 已更新 pi-web-ui，正在自动重启…"
+					: "✅ 已更新 pi-web-ui，重启服务后生效（pi-web-ui server restart）",
+			});
 		} catch (err) {
 			this.emit({
 				type: "update_result",

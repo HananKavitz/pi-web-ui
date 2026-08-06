@@ -94,12 +94,31 @@ app.get("/api/file", async (req, res) => {
 // from the repo root. In dev, Vite serves the UI on :5173 and proxies /ws.
 const here = dirname(fileURLToPath(import.meta.url)); // <pkg>/dist/server or <pkg>/server
 const pkgRoot = resolve(here, "..", "..");
+/** Set in the env of the replacement child spawned by a self-update restart. */
+const RESTART_CHILD_ENV = "PI_WEB_RESTART_CHILD";
 const webDist = join(pkgRoot, "web", "dist");
 if (existsSync(webDist)) {
 	app.use(express.static(webDist));
 	app.get(/^\/(?!api\/|ws).*/, (_req, res) => {
-		res.sendFile(join(webDist, "index.html"));
+		// Callback form: a failed stat here (npm i -g is mid-replacement of the
+		// package dir) responds 503 instead of crashing the request pipeline
+		// with an unhandled ENOENT stack trace.
+		res.sendFile(join(webDist, "index.html"), (err) => {
+			if (err && !res.headersSent) {
+				res.status(503).send("正在更新 pi-web-ui，请稍后刷新…");
+			}
+		});
 	});
+} else if (process.env[RESTART_CHILD_ENV]) {
+	// Auto-restart replacement of a self-update whose npm install did not
+	// complete (Windows: locked files / rollback can leave the global package
+	// without web/dist). Fail loudly with a repair hint instead of serving a
+	// UI-less 404 with no explanation.
+	console.error(
+		"✖ 更新后的安装不完整（缺少 web/dist/index.html）。\n" +
+			"  请手动执行 npm i -g pi-web-ui@latest 修复后重新启动。",
+	);
+	process.exit(1);
 }
 
 const httpServer = createServer(app);
@@ -132,7 +151,6 @@ const service = new AgentService(
 //   foreground runs get a replacement child that waits for our port to free.
 // Docker containers can't self-restart (the orchestrator owns that), so they
 // keep the manual-restart notice.
-const RESTART_CHILD_ENV = "PI_WEB_RESTART_CHILD";
 
 function scheduleUpdateRestart(): boolean {
 	const isLaunchd = process.platform === "darwin" && process.ppid === 1;
