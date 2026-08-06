@@ -2,8 +2,9 @@
 /**
  * pi-web-ui CLI.
  *
- *   pi-web-ui                              启动生产服务器（前台，Ctrl+C 停止）
+ *   pi-web-ui                              启动生产服务器（前台，Ctrl+C 停止，自动打开浏览器）
  *   pi-web-ui --port 9000 --cwd /path      同上，覆盖端口 / 工作目录 / 数据目录
+ *   pi-web-ui --no-browser                 启动但不自动打开浏览器
  *   pi-web-ui --version | --help
  *   pi-web-ui server install [选项]         安装系统服务（开机自启）并启动
  *   pi-web-ui server uninstall [选项]       卸载系统服务
@@ -21,6 +22,7 @@
  * PI_CODING_AGENT_DIR。
  */
 import { spawnSync } from "node:child_process";
+import { get as httpGet } from "node:http";
 import {
 	existsSync,
 	mkdirSync,
@@ -47,8 +49,9 @@ try {
 const HELP = `pi-web-ui v${pkg.version} — web chat for the pi coding agent
 
 用法:
-  pi-web-ui                               启动服务器（前台，Ctrl+C 停止）
+  pi-web-ui                               启动服务器（前台，Ctrl+C 停止，自动打开浏览器）
   pi-web-ui --port 9000 --cwd /path       启动并指定端口 / 工作目录 / 数据目录
+  pi-web-ui --no-browser                  启动但不自动打开浏览器
   pi-web-ui server install [选项]         安装系统服务（开机自启）并启动
   pi-web-ui server uninstall [选项]       卸载系统服务
   pi-web-ui server start|stop|restart|status [选项]
@@ -109,6 +112,7 @@ function parseFlags(argv) {
 		dataDir: undefined,
 		name: undefined,
 		print: false,
+		noBrowser: false,
 		help: false,
 	};
 	const positionals = [];
@@ -141,6 +145,9 @@ function parseFlags(argv) {
 			case "--print":
 				opts.print = true;
 				break;
+			case "--no-browser":
+				opts.noBrowser = true;
+				break;
 			case "--help":
 			case "-h":
 				opts.help = true;
@@ -157,11 +164,52 @@ function parseFlags(argv) {
 // 前台启动
 // ---------------------------------------------------------------------------
 
+/** Open a URL in the OS default browser; failures are ignored (best-effort). */
+function openBrowser(url) {
+	if (isMac) {
+		spawnSync("open", [url], { stdio: "ignore" });
+	} else if (isWin) {
+		spawnSync("cmd", ["/c", "start", "", url], { stdio: "ignore" });
+	} else {
+		spawnSync("xdg-open", [url], { stdio: "ignore" });
+	}
+}
+
+/**
+ * Poll `url` until the server answers (or ~15s pass), then open it in the
+ * default browser. The foreground server runs in this process, so the first
+ * HTTP response is the "listening" signal; if the server crashes meanwhile
+ * (e.g. port already taken), the pending timers die with the process and
+ * nothing is opened.
+ */
+function openBrowserWhenUp(url) {
+	const deadline = Date.now() + 15_000;
+	const attempt = () => {
+		const req = httpGet(url, (res) => {
+			res.resume();
+			console.log(`  🌐 已自动打开浏览器：${url}（--no-browser 可关闭）`);
+			openBrowser(url);
+		});
+		req.setTimeout(1000, () => {
+			req.destroy();
+			if (Date.now() < deadline) setTimeout(attempt, 150);
+		});
+		req.on("error", () => {
+			if (Date.now() < deadline) setTimeout(attempt, 150);
+		});
+	};
+	attempt();
+}
+
 async function startForeground(opts) {
 	if (opts.port) process.env.PORT = opts.port;
 	if (opts.cwd) process.env.PI_WEB_CWD = resolve(opts.cwd);
 	if (opts.dataDir) process.env.PI_WEB_DATA_DIR = resolve(opts.dataDir);
+	const url = `http://localhost:${String(
+		opts.port ?? process.env.PORT ?? "8787",
+	)}`;
 	await import(pathToFileURL(SERVER_ENTRY).href);
+	if (!opts.noBrowser) openBrowserWhenUp(url);
 }
 
 // ---------------------------------------------------------------------------

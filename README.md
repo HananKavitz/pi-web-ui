@@ -79,6 +79,16 @@ pi-web-ui                                            # foreground, http://localh
 PORT=9000 PI_WEB_CWD=/path/to/project pi-web-ui      # custom port / workspace
 ```
 
+Foreground start automatically opens your default browser at the URL once the
+server is up; pass `--no-browser` to skip that (scripted / headless starts).
+
+> **Always open the UI via `http://localhost`** (or HTTPS). Plain-HTTP access
+> from a LAN IP (e.g. `http://192.168.1.10:8787`) is not a secure context, so
+> the browser can't use the File System Access API for file downloads — and
+> on Windows, Chrome/Edge may then silently block downloads of no-reputation
+> file types (.zip/.exe/…) with no error message. Via localhost, downloads
+> open a native save dialog that always works.
+
 To run it in the background or auto-start on boot, use a system service —
 see [Deploy &amp; auto-start on boot](#deploy--auto-start-on-boot) (systemd /
 launchd / Docker).
@@ -313,6 +323,12 @@ docker compose down      # stop and remove the container
 whenever the Docker daemon starts (boot, crashes, reboots). Mount a volume for
 `/app/.pi-web` (sessions persist) and, optionally, your `~/.pi/agent` config
 and a workspace — see the comments in `docker-compose.yml`.
+
+> **Access via `http://localhost:8787`** even with Docker: on the same machine
+> the port mapping makes it a secure context, so file downloads use the native
+> save dialog (see the note in [Start](#start)). Accessing from another device
+> over plain HTTP (`http://<host-ip>:8787`) loses that — use an SSH tunnel
+> (`ssh -L 8787:localhost:8787 host`) for the same benefit.
 
 ### Linux — systemd
 

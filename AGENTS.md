@@ -63,10 +63,12 @@ pi-web-ui/
 │   │   ├── styles.css          # ★ 全部样式（按组件分区，带注释分隔线）
 │   │   ├── sounds.ts           # WebAudio 提示音
 │   │   ├── download.ts         # 下载：downloadFile（fetch→blob→objectURL，绕开 Chrome
-│   │   │                       #   Safe Browsing 对 HTTP 下载的拦截，错误可读）
+│   │   │                       #   Safe Browsing 对 HTTP 下载的拦截，错误可读；Chromium 安全上下文
+│   │   │                       #   下优先 showSaveFilePicker（Windows 下 blob 下载仍会被静默拦截时
+│   │   │                       #   的解法），Windows 自动清洗非法保存名）
 │   │   └── components/         # 见下
 │   └── dist/                   # 构建产物（gitignore，但打进 npm 包）
-├── bin/pi-web-ui.mjs           # CLI：前台启动 / --port --cwd --data-dir / server install|uninstall|start|stop|restart|status
+├── bin/pi-web-ui.mjs           # CLI：前台启动（就绪后自动打开浏览器，--no-browser 关闭）/ --port --cwd --data-dir / server install|uninstall|start|stop|restart|status
 │                               #   （macOS→launchd，Linux→systemd，Windows→schtasks 计划任务、隐藏窗口）
 ├── deploy/                     # 部署示例：launchd plist / systemd unit / Windows 任务 XML
 ├── Dockerfile / docker-compose.yml
@@ -128,8 +130,13 @@ pi-web-ui/
 - 行号语义：**尾随换行不产生空行**（`countLines` 已修正），前后端 split 逻辑必须一致。
 - **下载按钮**（`web/src/download.ts`）：不用 `<a download href>`（Chrome Safe Browsing
   会拦截非 HTTPS 源的无信誉文件类型如 .zip/.exe，报「无法下载/联系你的组织」），而是
-  fetch → blob → objectURL 触发保存；>200MB 回退原生导航流式下载；失败 toast 显示服务端
-  错误正文（`downloadFailed` i18n key）。`download-test.mjs` 覆盖回归。
+  fetch → blob 保存；>200MB 回退原生导航流式下载；失败 toast 显示服务端
+  错误正文（`downloadFailed` i18n key）。**Windows 特例**：blob 锚点下载在 Windows 上仍可能被
+  Safe Browsing 静默拦截（无 JS 错误，表现为「点了没反应」）——Chromium 安全上下文
+  （localhost/HTTPS）下优先用 `showSaveFilePicker` 直接写入用户选中的文件（绕过下载管线）；
+  Windows 上保存名经 `sanitizeFileName` 清洗（`<>:"\|?*`、尾随点/空格、CON/COM1 等保留
+  设备名）；取消保存对话框不算错误（`cancelled`，不弹 toast）。`download-test.mjs` 覆盖回归
+  （已禁用 picker 以测 blob 路径）。
 
 ### 终端
 
