@@ -62,6 +62,12 @@ if (!(await portUp())) {
 
 const browser = await chromium.launch({ executablePath: HEADLESS });
 const page = await browser.newPage({ acceptDownloads: true });
+// The picker path (showSaveFilePicker) opens a native dialog headless
+// Chromium can't drive — disable it so the test exercises the blob-anchor
+// fallback, which is what the download event asserts.
+await page.addInitScript(() => {
+	Object.defineProperty(window, "showSaveFilePicker", { value: undefined });
+});
 await page.goto(URL);
 await page.waitForSelector(".panel-right .file-item.file", { timeout: 15000 });
 

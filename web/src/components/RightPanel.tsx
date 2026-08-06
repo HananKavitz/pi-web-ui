@@ -190,11 +190,13 @@ export function RightPanel({
 										data-tip={t("downloadFile")}
 										onClick={() => {
 											void downloadFile(e.path, e.name).then((r) => {
-												if (!r.ok)
-													onNotice(
-														"error",
-														t("downloadFailed", { error: r.error }),
-													);
+												if (r.ok) return;
+												// cancelled: user dismissed the save dialog — not an error.
+												if (r.cancelled) return;
+												onNotice(
+													"error",
+													t("downloadFailed", { error: r.error }),
+												);
 											});
 										}}
 									>
