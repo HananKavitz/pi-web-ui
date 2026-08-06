@@ -35,6 +35,7 @@ import {
 import type {
 	CommandDef,
 	ConversationSummary,
+	FileEntry,
 	ProjectSummary,
 	ServerMessage,
 	SessionSummary,
@@ -520,6 +521,9 @@ function sanitizeId(id: string): string {
 	return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "anon";
 }
 
+const IS_WIN32 = process.platform === "win32";
+
+// mac/linux: hide build & dependency noise (original behavior).
 const IGNORED_ENTRIES = new Set([
 	"node_modules",
 	".git",
@@ -537,6 +541,24 @@ const IGNORED_ENTRIES = new Set([
 	".DS_Store",
 	"Thumbs.db",
 ]);
+
+// Windows: the file tree is the primary way to navigate a project, so only
+// hide what would flood or destabilize the panel (dependency trees, VCS
+// internals, session data) plus pure junk. Build output (dist/.next/…) and
+// local env dirs (venv/__pycache__/…) stay visible — "所有文件可查看".
+const IGNORED_ENTRIES_WIN = new Set([
+	"node_modules",
+	".git",
+	".pi-web",
+	".DS_Store",
+	"Thumbs.db",
+	"desktop.ini",
+]);
+
+/** The ignore set for the current platform — keeps win/posix lists separate. */
+function ignoredEntries(): Set<string> {
+	return IS_WIN32 ? IGNORED_ENTRIES_WIN : IGNORED_ENTRIES;
+}
 
 function countLines(buf: Buffer): number {
 	if (buf.length === 0) return 0;
@@ -576,9 +598,82 @@ export function workspacePath(
 	raw: string,
 ): { abs: string; rel: string } | null {
 	const abs = resolve(root, raw);
-	const rel = relative(root, abs);
-	if (rel.startsWith("..") || rel.includes(`${sep}..`)) return null;
-	return { abs, rel };
+	const rawRel = relative(root, abs);
+	if (rawRel.startsWith("..") || rawRel.includes(`${sep}..`)) return null;
+	// Normalize to forward slashes: the wire protocol and the frontend always
+	// use "/", but relative() returns "\\" on Windows.
+	return { abs, rel: rawRel.split(sep).join("/") };
+}
+
+/**
+ * Read a directory for the file panel. The two platforms intentionally use
+ * different strategies — do NOT unify them:
+ *
+ * darwin/linux (posix): original behavior — hide build/dependency noise,
+ * small cap, hard error notice when the directory itself is unreadable.
+ *
+ * win32: stability and completeness first, preview second. ACL-protected
+ * system dirs (C:\$Recycle.Bin, Program Files internals, OneDrive placeholders)
+ * throw EPERM/EACCES on open — that must not kill the panel, so it degrades
+ * to an empty listing plus a warning. Directory symlinks/junctions are
+ * followed so mklink /D folders stay navigable; broken links still show as
+ * files instead of vanishing. The cap is 4x posix and truncation is reported
+ * via `truncated` instead of happening silently.
+ */
+async function readDirForUI(
+	abs: string,
+	rel: string,
+): Promise<{ entries: FileEntry[]; truncated: boolean; error?: string }> {
+	const fs = await import("node:fs/promises");
+	const ignored = ignoredEntries();
+	const MAX = IS_WIN32 ? 2000 : 500;
+
+	let dirents: import("node:fs").Dirent[];
+	try {
+		dirents = await fs.readdir(abs, { withFileTypes: true });
+	} catch (err) {
+		if (!IS_WIN32) throw err;
+		// Windows ACL-protected/system dirs throw EPERM/EACCES on open —
+		// degrade to an empty listing; listFiles turns this into a warning.
+		return { entries: [], truncated: false, error: (err as Error).message };
+	}
+
+	const out: FileEntry[] = [];
+	for (const d of dirents) {
+		if (ignored.has(d.name)) continue;
+		let type: "dir" | "file";
+		if (IS_WIN32 && d.isSymbolicLink()) {
+			// mklink /D symlinks and junctions are reparse points — libuv
+			// classifies them as links, so isDirectory() is false. Follow the
+			// target so folder links stay navigable; broken links still show.
+			try {
+				const st = await fs.stat(join(abs, d.name));
+				type = st.isDirectory() ? "dir" : "file";
+			} catch {
+				type = "file";
+			}
+		} else {
+			type = d.isDirectory() ? "dir" : "file";
+		}
+		const entry: FileEntry = {
+			name: d.name,
+			path: rel === "" ? d.name : `${rel}/${d.name}`,
+			type,
+		};
+		if (type === "file") entry.kind = previewKind(d.name);
+		out.push(entry);
+	}
+
+	out.sort((a, b) =>
+		a.type === b.type
+			? a.name.localeCompare(b.name)
+			: a.type === "dir"
+				? -1
+				: 1,
+	);
+	const truncated = out.length > MAX;
+	if (truncated) out.length = MAX;
+	return { entries: out, truncated };
 }
 
 // ---------------------------------------------------------------------------
@@ -1760,8 +1855,8 @@ export class ClientSession {
 
 		for (const att of attachments) {
 			const abs = resolve(root, att.path);
-			const rel = relative(root, abs);
-			if (rel.startsWith("..") || rel.includes(`${sep}..`)) {
+			const rawRel = relative(root, abs);
+			if (rawRel.startsWith("..") || rawRel.includes(`${sep}..`)) {
 				this.emit({
 					type: "notice",
 					level: "warning",
@@ -1769,6 +1864,9 @@ export class ClientSession {
 				});
 				continue;
 			}
+			// Normalize to forward slashes (relative() returns "\\" on Windows);
+			// <file path> and details.path must use the wire format.
+			const rel = rawRel.split(sep).join("/");
 			let stat:
 				| { size: number; isFile(): boolean; isDirectory(): boolean }
 				| undefined;
@@ -1783,7 +1881,7 @@ export class ClientSession {
 				continue;
 			}
 
-			const name = att.path.split("/").pop() ?? att.path;
+			const name = att.path.split(/[\\/]/).pop() ?? att.path;
 
 			// Folders can't be inlined — always a path reference the model browses
 			// on demand with its own tools (ls/read).
@@ -2288,12 +2386,11 @@ export class ClientSession {
 	/** List a workspace directory (relative to the configured cwd). */
 	async listFiles(relPath?: string): Promise<void> {
 		try {
-			const fs = await import("node:fs/promises");
 			const { resolve, sep, relative } = await import("node:path");
 			const root = resolve(this.cwd);
 			const target = relPath ? resolve(root, relPath) : root;
-			const rel = relative(root, target);
-			if (rel.startsWith("..") || rel.includes(`${sep}..`)) {
+			const rawRel = relative(root, target);
+			if (rawRel.startsWith("..") || rawRel.includes(`${sep}..`)) {
 				this.emit({
 					type: "notice",
 					level: "warning",
@@ -2301,31 +2398,19 @@ export class ClientSession {
 				});
 				return;
 			}
-			const dirents = await fs.readdir(target, { withFileTypes: true });
-			const entries = dirents
-				.filter((d) => !IGNORED_ENTRIES.has(d.name))
-				.map((d) => {
-					const entry: {
-						name: string;
-						path: string;
-						type: "dir" | "file";
-						kind?: PreviewKind;
-					} = {
-						name: d.name,
-						path: rel === "" ? d.name : `${rel}/${d.name}`,
-						type: (d.isDirectory() ? "dir" : "file") as "dir" | "file",
-					};
-					if (!d.isDirectory()) entry.kind = previewKind(d.name);
-					return entry;
-				})
-				.sort((a, b) =>
-					a.type === b.type
-						? a.name.localeCompare(b.name)
-						: a.type === "dir"
-							? -1
-							: 1,
-				)
-				.slice(0, 500);
+			// Normalize to forward slashes: the wire protocol and the frontend
+			// always use "/", but relative() returns "\\" on Windows.
+			const rel = rawRel.split(sep).join("/");
+			const { entries, truncated, error } = await readDirForUI(target, rel);
+			if (error) {
+				// Windows-only: unreadable system dirs degrade to an empty list
+				// with a warning instead of a hard error — the panel stays usable.
+				this.emit({
+					type: "notice",
+					level: "warning",
+					text: `目录不可读：${error}`,
+				});
+			}
 			this.emit({
 				type: "files",
 				path: rel === "" ? "" : rel,
@@ -2336,6 +2421,7 @@ export class ClientSession {
 							? rel.slice(0, rel.lastIndexOf("/"))
 							: "",
 				entries,
+				truncated,
 			});
 		} catch (err) {
 			this.emit({
@@ -2370,7 +2456,7 @@ export class ClientSession {
 				});
 				return;
 			}
-			const name = relPath.split("/").pop() ?? relPath;
+			const name = relPath.split(/[\\/]/).pop() ?? relPath;
 			const kind = previewKind(name);
 			// Media previews stream over the /api/file HTTP endpoint, so only
 			// metadata is sent here — the raw bytes never touch the socket.
@@ -2493,11 +2579,15 @@ export class ClientSession {
 			}
 			const completions = dirents
 				.filter(
-					(d) => d.name.startsWith(prefix) && !IGNORED_ENTRIES.has(d.name),
+					(d) => d.name.startsWith(prefix) && !ignoredEntries().has(d.name),
 				)
 				.map((d) => ({
 					name: d.name,
-					path: dirPart + d.name,
+					// Windows users type backslashes — normalize the completion to the
+					// wire format ("/") so the picked path round-trips cleanly.
+					path: IS_WIN32
+						? join(dirPart, d.name).split(sep).join("/")
+						: dirPart + d.name,
 					type: (d.isDirectory() ? "dir" : "file") as "dir" | "file",
 				}))
 				.sort((a, b) => {

@@ -213,6 +213,11 @@ export function RightPanel({
 								</div>
 							),
 						)}
+						{files.truncated && (
+							<div className="panel-empty files-truncated">
+								{t("filesTruncated")}
+							</div>
+						)}
 					</>
 				)}
 				{!loading && !files && (

@@ -329,6 +329,11 @@ export type ServerMessage =
 			path: string;
 			parent: string | null;
 			entries: FileEntry[];
+			/**
+			 * The directory had more entries than the platform cap (win32: 2000,
+			 * posix: 500) — the list was cut short. UI shows a hint when true.
+			 */
+			truncated: boolean;
 	  }
 	/** Content of a workspace file for the preview panel. */
 	| {

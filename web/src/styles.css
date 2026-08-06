@@ -290,6 +290,14 @@ body {
 	color: var(--text-faint);
 }
 
+/* Huge directories get their list cut at the platform cap — surface it. */
+.files-truncated {
+	color: var(--amber);
+	border-top: 1px dashed var(--border);
+	margin-top: 8px;
+	padding-top: 12px;
+}
+
 /* ------------------------------------------------------------------ sessions */
 
 .session-item {

@@ -40,6 +40,11 @@ pi-web-ui/
 │   │                           #   · WebUIContext：把扩展的 widget/status/dialog 桥接到浏览器
 │   │                           #   · 附件构建（inline/reference/lines 三种模式）
 │   │                           #   · readFile 预览（512KB 上限、二进制检测、路径越界拦截）
+│   │                           #   · 文件列表按平台拆分（readDirForUI）：win32 稳定+全量优先——ACL
+│   │                           #     保护目录降级为空列表+警告（不炸面板）、目录符号链接/junction 跟随、
+│   │                           #     上限 2000 并上报 truncated；posix（mac/linux）保持原逻辑（上限 500）。
+│   │                           #     IGNORED_ENTRIES 也分平台：win 只藏 node_modules/.git/.pi-web/垃圾文件，
+│   │                           #     dist/.next/venv 等全部可见
 │   │                           #   · 模型管理 / auth.json / models.json / 会话列表 / cwd 切换
 │   │                           #   · 每客户端持久化 lastCwd + 最近项目（<dataDir>/client-state.json，
 │   │                           #     重启后恢复上次工作目录；projects 消息推送最近项目列表）
@@ -82,7 +87,7 @@ pi-web-ui/
 | --- | --- |
 | `FilePreview.tsx` | 文件预览弹窗：行号、点选/拖拽/Shift 选区、添加到对话（lines 附件） |
 | `LeftPanel.tsx` | 左栏：最近项目（点击切换 cwd）+ 打开的对话（>1 个时显示，每条带所属项目标签，跨目录切换发 notice；固定在历史列表上方独立滚动）+ 历史对话（标题不随列表滚动） |
-| `RightPanel.tsx` | 文件树浏览（list_files），文件名点击→预览，📎/🔗/👁 附件按钮 |
+| `RightPanel.tsx` | 文件树浏览（list_files，目录过大时显示截断提示），文件名点击→预览，📎/🔗/👁 附件按钮 |
 | `ChatInput.tsx` | 输入框 + 附件 chips（inline/reference/lines 三色）；回复中显示「补充」按钮（followUp 排队，回复完成立即发送）+「停止」 |
 | `Message.tsx` / `MessageList.tsx` | 消息渲染：附件卡片（`stripFileWrapper` 剥 `<file>` 包装）、流式光标、tool 结果关联；超过 30 条后旧消息折叠为摘要行（`CollapsedMessage`，惰性渲染，点击展开，常量 `KEEP_RECENT`/`COLLAPSE_MIN` 在 MessageList 顶部） |
 | `ToolCallBlock.tsx` / `ThinkingBlock.tsx` / `BashBlock` | 工具调用卡片、思考块、bash 输出 |
@@ -173,7 +178,8 @@ pi-web-ui/
 ## 5. 开发工作流
 
 ```bash
-npm run dev          # 并行：tsx watch 后端(:8787) + vite 前端(:5173，代理 /ws)
+npm run dev          # 并行：node --watch --import tsx 后端(:8787，dev:server 脚本) + vite 前端(:5173，代理 /ws)。
+#                     注意：不要用 `tsx watch` 起后端——它在 Windows 下、stdio 为管道（concurrently 的 spawn 方式）时会静默挂死（tsx 上游 bug），改用 Node 原生 --watch。
 npm run typecheck    # 双端 tsc --noEmit（提交前必跑）
 npm run build        # build:web (vite) + build:server (tsc)
 npm start            # 跑编译产物 dist/server/index.js（生产）
