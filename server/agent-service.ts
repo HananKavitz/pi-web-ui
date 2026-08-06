@@ -751,7 +751,13 @@ export class ClientSession {
 	): Promise<ClientSession> {
 		const agentDir = process.env.PI_CODING_AGENT_DIR ?? getAgentDir();
 
-		const cs = new ClientSession(clientId, cwd, sessionDir, agentDir, stateStore);
+		const cs = new ClientSession(
+			clientId,
+			cwd,
+			sessionDir,
+			agentDir,
+			stateStore,
+		);
 		const runtime = await createAgentSessionRuntime(cs.makeRuntimeFactory(), {
 			cwd,
 			agentDir,
@@ -1928,11 +1934,14 @@ export class ClientSession {
 			return;
 		}
 		try {
-			const runtime = await createAgentSessionRuntime(this.makeRuntimeFactory(), {
-				cwd: this.cwd,
-				agentDir: this.agentDir,
-				sessionManager: SessionManager.create(this.cwd, this.sessionDir),
-			});
+			const runtime = await createAgentSessionRuntime(
+				this.makeRuntimeFactory(),
+				{
+					cwd: this.cwd,
+					agentDir: this.agentDir,
+					sessionManager: SessionManager.create(this.cwd, this.sessionDir),
+				},
+			);
 			const conv = this.makeConversation(runtime);
 			this.convs.set(conv.id, conv);
 			this.activeId = conv.id;
@@ -1993,7 +2002,11 @@ export class ClientSession {
 				isStreaming,
 			});
 		}
-		this.emit({ type: "conversations", conversations, activeId: this.activeId });
+		this.emit({
+			type: "conversations",
+			conversations,
+			activeId: this.activeId,
+		});
 	}
 
 	/** List persisted sessions for this client, newest first. */
@@ -2447,11 +2460,14 @@ export class ClientSession {
 
 			// Build the new runtime first — only swap the ACTIVE conversation on
 			// success (other open conversations keep their own cwd + runtime).
-			const newRuntime = await createAgentSessionRuntime(this.makeRuntimeFactory(), {
-				cwd: abs,
-				agentDir: this.agentDir,
-				sessionManager: SessionManager.continueRecent(abs, this.sessionDir),
-			});
+			const newRuntime = await createAgentSessionRuntime(
+				this.makeRuntimeFactory(),
+				{
+					cwd: abs,
+					agentDir: this.agentDir,
+					sessionManager: SessionManager.continueRecent(abs, this.sessionDir),
+				},
+			);
 			const conv = this.conv;
 			const oldRuntime = conv.runtime;
 			conv.runtime = newRuntime;

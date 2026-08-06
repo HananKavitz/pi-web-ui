@@ -104,7 +104,11 @@ type Action =
 	| { type: "dismiss_notice"; id: number }
 	| { type: "ready"; serverVersion: string }
 	| { type: "sessions"; sessions: SessionSummary[] }
-	| { type: "conversations"; conversations: ConversationSummary[]; activeId: string }
+	| {
+			type: "conversations";
+			conversations: ConversationSummary[];
+			activeId: string;
+	  }
 	| { type: "projects"; projects: ProjectSummary[] }
 	| { type: "files"; files: FileListing }
 	| { type: "file_content"; content: FileContent }

@@ -303,7 +303,11 @@ export interface ConversationSummary {
 export type ServerMessage =
 	| { type: "ready"; clientId: string; serverVersion: string }
 	| { type: "snapshot"; state: UiState }
-	| { type: "conversations"; conversations: ConversationSummary[]; activeId: string }
+	| {
+			type: "conversations";
+			conversations: ConversationSummary[];
+			activeId: string;
+	  }
 	| {
 			type: "tool_delta";
 			toolCallId: string;

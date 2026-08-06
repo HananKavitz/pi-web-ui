@@ -288,7 +288,11 @@ export interface ProviderStatus {
 export type ServerMessage =
 	| { type: "ready"; clientId: string; serverVersion: string }
 	| { type: "snapshot"; state: UiState }
-	| { type: "conversations"; conversations: ConversationSummary[]; activeId: string }
+	| {
+			type: "conversations";
+			conversations: ConversationSummary[];
+			activeId: string;
+	  }
 	| { type: "tool_delta"; toolCallId: string; toolName: string; delta: string }
 	// -- terminal ------------------------------------------------------------
 	| { type: "terminal_output"; terminalId: string; data: string }
