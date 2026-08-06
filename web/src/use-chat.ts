@@ -71,6 +71,7 @@ export interface ChatState {
 	update: {
 		current: string;
 		latest: string | null;
+		latestPublishedAt: string | null;
 		upToDate: boolean;
 		pendingRestart: boolean;
 		error?: string;
@@ -120,6 +121,7 @@ type Action =
 			status: {
 				current: string;
 				latest: string | null;
+				latestPublishedAt: string | null;
 				upToDate: boolean;
 				pendingRestart: boolean;
 				error?: string;

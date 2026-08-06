@@ -344,6 +344,9 @@ export type ServerMessage =
 			/** Version of the RUNNING process (from its own package.json). */
 			current: string;
 			latest: string | null;
+			/** Publish timestamp (ISO) of the latest version — lets the UI hint
+			 * when it was just published and registry caches may lag. */
+			latestPublishedAt: string | null;
 			upToDate: boolean;
 			/** True after a successful update — restart required to take effect. */
 			pendingRestart: boolean;

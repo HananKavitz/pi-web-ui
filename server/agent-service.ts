@@ -1130,18 +1130,27 @@ export class ClientSession {
 	async checkUpdate(): Promise<void> {
 		const current = ClientSession.currentAppVersion();
 		try {
-			const res = await fetch("https://registry.npmjs.org/pi-web-ui/latest", {
+			// Fetch the full package doc (not /latest): it carries the per-version
+			// publish timestamps so the UI can hint when a version was JUST
+			// published and the registry/CDN caches may not have caught up yet.
+			const res = await fetch("https://registry.npmjs.org/pi-web-ui", {
 				signal: AbortSignal.timeout(8_000),
 			});
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			const data = (await res.json()) as { version?: string };
-			const latest = data.version ?? null;
+			const data = (await res.json()) as {
+				"dist-tags"?: { latest?: string };
+				time?: Record<string, string>;
+			};
+			const latest = data["dist-tags"]?.latest ?? null;
+			const latestPublishedAt =
+				latest && data.time ? (data.time[latest] ?? null) : null;
 			const upToDate =
 				latest === null || ClientSession.compareVersions(current, latest) >= 0;
 			this.emit({
 				type: "update_status",
 				current,
 				latest,
+				latestPublishedAt,
 				upToDate,
 				pendingRestart: this.pendingRestart,
 			});
@@ -1150,6 +1159,7 @@ export class ClientSession {
 				type: "update_status",
 				current,
 				latest: null,
+				latestPublishedAt: null,
 				upToDate: false,
 				pendingRestart: this.pendingRestart,
 				error: `检查更新失败：${(err as Error).message}`,

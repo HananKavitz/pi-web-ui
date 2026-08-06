@@ -10,6 +10,10 @@ interface DropdownProps {
 	/** Align the menu edge with the trigger's edge (default right, since the
 	 * toolbar sits at the top-right of the window). */
 	align?: "left" | "right";
+	/** Let the menu grow to fit its content instead of capping at the default
+	 * max-height with a scrollbar (e.g. small fixed panels like the update
+	 * dropdown). */
+	fit?: boolean;
 }
 
 /** Click-outside-aware dropdown menu. */
@@ -19,6 +23,7 @@ export function Dropdown({
 	onOpenChange,
 	children,
 	align = "right",
+	fit = false,
 }: DropdownProps) {
 	const ref = useRef<HTMLDivElement>(null);
 
@@ -41,7 +46,7 @@ export function Dropdown({
 	}, [open, onOpenChange]);
 
 	return (
-		<div className={`dropdown ${align}`} ref={ref}>
+		<div className={`dropdown ${align} ${fit ? "fit" : ""}`} ref={ref}>
 			<button
 				type="button"
 				className="chip"

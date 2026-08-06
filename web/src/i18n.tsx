@@ -122,6 +122,8 @@ const zh = {
 	checkUpdate: "检查更新",
 	upToDate: "已是最新版本",
 	updateAvailable: "发现新版本 v{version}",
+	updateJustPublished:
+		"v{version} 刚刚发布，npm 缓存可能尚未同步——若未检测到新版本，请稍后重新检查",
 	updateNow: "立即更新",
 	confirmUpdate: "确认更新（覆盖全局安装）",
 	updateSuccess: "✅ 已更新，正在重启…",
@@ -415,6 +417,8 @@ const en: Record<keyof typeof zh, string> = {
 	checkUpdate: "Check for updates",
 	upToDate: "You're up to date",
 	updateAvailable: "New version v{version} available",
+	updateJustPublished:
+		"v{version} was just published — npm cache may lag; if the new version isn't detected yet, re-check in a moment",
 	updateNow: "Update now",
 	confirmUpdate: "Confirm (replaces global install)",
 	updateSuccess: "✅ Updated — restarting…",

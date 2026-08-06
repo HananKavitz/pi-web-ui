@@ -1538,6 +1538,12 @@ body {
 	left: 0;
 }
 
+/* Small fixed panels (update etc.): grow to fit content, no scrollbar. */
+.dropdown.fit .dd-menu {
+	max-height: none;
+	overflow: visible;
+}
+
 .dd-header {
 	padding: 6px 10px 4px;
 	font-size: 11px;

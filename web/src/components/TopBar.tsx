@@ -303,6 +303,7 @@ export function TopBar({
 						setUpdateArmed(false);
 						if (v) send({ type: "check_update" });
 					}}
+					fit
 				>
 					<div className="dd-header">{t("update")}</div>
 					<div className="dd-update">
@@ -336,6 +337,15 @@ export function TopBar({
 							chat.update.latest && (
 								<div className="dd-note warn">
 									{t("updateAvailable", { version: chat.update.latest })}
+								</div>
+							)}
+						{chat.update?.latestPublishedAt &&
+							Date.now() - new Date(chat.update.latestPublishedAt).getTime() <
+								30 * 60_000 && (
+								<div className="dd-note warn">
+									{t("updateJustPublished", {
+										version: chat.update.latest ?? "",
+									})}
 								</div>
 							)}
 						{chat.updateResult && !chat.updateResult.ok && (
