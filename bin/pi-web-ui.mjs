@@ -319,6 +319,14 @@ function winPowershell() {
 	);
 }
 
+
+/** Full path to wscript.exe — a console-free host (no conhost window, so no black
+ * console box ever appears in the taskbar on double-click). Used as the .lnk target;
+ * it launches the .ps1 hidden via a thin VBS launcher. */
+function winWscript() {
+	return join(process.env.SystemRoot ?? "C:\\Windows", "System32", "wscript.exe");
+}
+
 /**
  * Resolve the real node binary. fnm/volta/nvm shims (e.g. fnm_multishells)
  * point into temp dirs that vanish when the installing shell exits — the
@@ -335,6 +343,12 @@ function realNode() {
 /** Windows: launcher ps1 the desktop .lnk runs (hidden). */
 function winShortcutPs1Path(name) {
 	return join(winServiceDir(), `${name}-shortcut.ps1`);
+}
+
+
+/** Windows: launcher vbs the desktop .lnk actually runs (wscript.exe, console-free). */
+function winShortcutVbsPath(name) {
+	return join(winServiceDir(), `${name}-shortcut.vbs`);
 }
 
 /** Windows: PID file of a shortcut-started (no scheduled task) instance. */
@@ -430,6 +444,31 @@ function buildWinShortcutPs1(env, cwd, taskName, url, logPath, pidPath) {
 	].join("\r\n");
 }
 
+
+/**
+ * Build the tiny VBS launcher the desktop .lnk invokes. Its purpose is purely to
+ * start the .ps1 *without* creating any console host: wscript.exe has no console,
+ * and WScript.Shell.Run(…, 0, False) launches the child hidden and returns at once
+ * (0 = hidden window, False = don't wait). Result: double-clicking the icon never
+ * flashes a black box and no leftover console appears in the taskbar.
+ */
+function buildWinShortcutVbs(ps1Path) {
+	const cmd = `${winPowershell()} -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "${ps1Path}"`;
+	// VBScript 字符串没有 \" 转义（也没有 \uXXXX），内嵌引号必须写成 ""；
+	// 不能用 JSON.stringify —— 它输出 \" 会在 VBScript 里提前结束字符串（语句未结束 800A0401），
+	// 且会把非 ASCII 路径转成 \uXXXX 字面量（wscript 不识别，中文用户名直接变成乱码路径）。
+	const vbsCmd = cmd.replace(/"/g, '""');
+	return [
+		"Option Explicit",
+		"Dim sh, cmd",
+		"Set sh = CreateObject(\"WScript.Shell\")",
+		`cmd = "${vbsCmd}"`,
+		"sh.Run cmd, 0, False",
+		"Set sh = Nothing",
+		"",
+	].join("\r\n");
+}
+
 /**
  * Create the Windows desktop .lnk via WScript.Shell COM (correct Desktop path
  * even with OneDrive redirection). Target is powershell.exe with
@@ -454,6 +493,9 @@ function installWinShortcut(opts) {
 	}
 	mkdirSync(dirname(ps1Path), { recursive: true });
 	writeFileSync(ps1Path, "\uFEFF" + ps1, "utf8"); // PS 5.1 需要 BOM
+	// wscript host + VBS launcher: no console window / taskbar black box on double-click.
+	const vbsPath = winShortcutVbsPath(name);
+	writeFileSync(vbsPath, "\uFEFF" + buildWinShortcutVbs(ps1Path), "utf16le"); // wscript 只认 UTF-16/ANSI，UTF-8 BOM 会报“无效字符”，中文路径用 utf16le + BOM
 	// 把品牌图标准备好：复制到用户目录（.lnk 图标指向稳定路径）
 	if (existsSync(APP_ICO_SOURCE)) {
 		copyFileSync(APP_ICO_SOURCE, winIcoPath());
@@ -466,8 +508,8 @@ function installWinShortcut(opts) {
 		"$ws = New-Object -ComObject WScript.Shell",
 		"$desktop = [Environment]::GetFolderPath('Desktop')",
 		`$lnk = $ws.CreateShortcut((Join-Path $desktop ${psQuote(SHORTCUT_LNK_NAME)}))`,
-		`$lnk.TargetPath = ${psQuote(powershell)}`,
-		`$lnk.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File ' + ${psQuote('"' + ps1Path + '"')}`,
+		`$lnk.TargetPath = ${psQuote(winWscript())}`,
+		`$lnk.Arguments = ${psQuote(vbsPath)}`,
 		`$lnk.WorkingDirectory = ${psQuote(cwd)}`,
 		"$lnk.Description = 'pi-web-ui — 双击启动服务并打开浏览器'",
 		`$lnk.IconLocation = ${psQuote(winIcoPath())} + ',0'`,
@@ -642,7 +684,7 @@ Categories=Network;WebBrowser;
 /** Remove desktop shortcut artifacts created by `server shortcut`. */
 function removeShortcut(name) {
 	if (isWin) {
-		for (const f of [winShortcutPs1Path(name), winPidFilePath(name), winIcoPath()]) {
+		for (const f of [winShortcutPs1Path(name), winShortcutVbsPath(name), winPidFilePath(name), winIcoPath()]) {
 			if (existsSync(f)) rmSync(f);
 		}
 		spawnSync(
