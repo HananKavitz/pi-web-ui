@@ -1,9 +1,11 @@
 /**
- * Cross-directory open-conversation repro:
+ * Per-project conversation isolation + unlisted-idle dismissal:
  *
- *   conv1 (A) → new_chat conv2 (A) → set_cwd(B) (rebuilds ACTIVE conv) →
- *   switch back and forth, verifying each snapshot's cwd + file tree root
- *   follow the active conversation.
+ *   conv1 (A, startup) → new_chat dismisses it (never ran) → set_cwd(B)
+ *   creates B's own conversation → set_cwd(A) creates a NEW A conversation
+ *   (the old one was dismissed) → conversation ids never leak between
+ *   projects, the running-conversation list stays empty (nothing was ever
+ *   displaced while streaming), and the file tree follows the active project.
  */
 import WebSocket from "ws";
 import { execSync, spawn } from "node:child_process";
@@ -49,7 +51,6 @@ for (let i = 0; i < 40 && !(await portUp()); i++) await sleep(250);
 
 const clientId = randomUUID();
 const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
-const pending = new Map(); // seq → {resolve}
 let seq = 0;
 const send = (msg) => ws.send(JSON.stringify({ ...msg, seq: ++seq }));
 
@@ -60,7 +61,12 @@ let files = null;
 const notices = [];
 
 ws.on("message", (d) => {
-	const m = JSON.parse(d.toString());
+	let m;
+	try {
+		m = JSON.parse(d.toString());
+	} catch {
+		return; // malformed frame — ignore
+	}
 	if (m.type === "snapshot") snapshot = m.state;
 	else if (m.type === "conversations") conversations = m.conversations;
 	else if (m.type === "files") files = m;
@@ -80,7 +86,6 @@ const waitFor = async (pred, what, timeout = 8000) => {
 	console.error(`TIMEOUT waiting for ${what}`);
 	return false;
 };
-const waitSnapshot = () => waitFor(() => snapshot !== null, "snapshot");
 
 ws.on("open", () => {
 	ws.send(JSON.stringify({ type: "hello", clientId }));
@@ -91,7 +96,7 @@ await waitFor(() => snapshot !== null, "initial snapshot");
 check("conv1 cwd = A", snapshot?.cwd === A, snapshot?.cwd);
 const conv1 = snapshot.conversationId;
 
-// --- new_chat → conv2 (still A) ---
+// --- new_chat: conv1 (never ran, unlisted) is dismissed; nothing is listed ---
 send({ type: "new_chat" });
 await waitFor(
 	() => snapshot?.conversationId && snapshot.conversationId !== conv1,
@@ -99,55 +104,78 @@ await waitFor(
 );
 const conv2 = snapshot.conversationId;
 check("conv2 cwd = A", snapshot?.cwd === A);
-await waitFor(() => conversations.length >= 2, "2 conversations listed");
-check("2 open conversations", conversations.length >= 2);
+await sleep(300);
+check(
+	"no running conversations listed (nothing was displaced while streaming)",
+	conversations.length === 0,
+	`${conversations.length} listed`,
+);
 
-// --- set_cwd(B): rebuilds the ACTIVE conversation (conv2) in B ---
+// --- set_cwd(B): A's conv2 is dismissed (never ran); B gets its own conversation ---
 send({ type: "set_cwd", path: B });
-await waitFor(() => snapshot?.cwd === B && conversations.length >= 2, "cwd=B");
-check("after set_cwd: conv2 cwd = B", snapshot?.cwd === B);
-await waitFor(() => files?.path === "", "files root for B");
+await waitFor(() => snapshot?.cwd === B, "cwd=B");
+const convB = snapshot.conversationId;
+check(
+	"set_cwd(B) → B gets its OWN conversation id",
+	convB && convB !== conv2,
+	`${conv2} → ${convB}`,
+);
+check("convB cwd = B", snapshot?.cwd === B);
 await waitFor(
 	() => files?.entries?.some((e) => e.name === "only-in-B.txt"),
 	"B file tree",
 );
-check("file tree shows B's files", files?.entries?.some((e) => e.name === "only-in-B.txt"));
+check(
+	"file tree shows B's files",
+	files?.entries?.some((e) => e.name === "only-in-B.txt"),
+);
 
-// --- switch back to conv1 (still A) ---
-send({ type: "switch_conversation", id: conv1 });
-await waitFor(() => snapshot?.conversationId === conv1 && snapshot?.cwd === A, "conv1+A");
-check("switch to conv1 → cwd back to A", snapshot?.cwd === A, snapshot?.cwd);
+// --- set_cwd(A): B's conv (never ran) is dismissed; A gets a NEW conversation ---
+send({ type: "set_cwd", path: A });
+await waitFor(() => snapshot?.cwd === A, "cwd=A");
+const convA2 = snapshot.conversationId;
+check(
+	"set_cwd(A) → fresh A conversation (old A conv was dismissed)",
+	convA2 && convA2 !== convB && convA2 !== conv2,
+	`${convB} → ${convA2}`,
+);
 await waitFor(
 	() => files?.entries?.some((e) => e.name === "only-in-A.txt"),
 	"A file tree",
 );
-check("file tree shows A's files", files?.entries?.some((e) => e.name === "only-in-A.txt"));
+check(
+	"file tree shows A's files",
+	files?.entries?.some((e) => e.name === "only-in-A.txt"),
+);
 
-// --- and back to conv2 (B) ---
-send({ type: "switch_conversation", id: conv2 });
-await waitFor(() => snapshot?.conversationId === conv2 && snapshot?.cwd === B, "conv2+B");
-check("switch to conv2 → cwd = B", snapshot?.cwd === B, snapshot?.cwd);
+// --- set_cwd(B) again: B's previous conv was dismissed; a new one is created ---
+send({ type: "set_cwd", path: B });
 await waitFor(
-	() => files?.entries?.some((e) => e.name === "only-in-B.txt"),
-	"B file tree again",
+	() => snapshot?.cwd === B && snapshot?.conversationId !== convB,
+	"cwd=B again",
 );
-check("file tree back to B's files", files?.entries?.some((e) => e.name === "only-in-B.txt"));
+check(
+	"set_cwd(B) again → new B conversation (previous B conv was dismissed)",
+	snapshot?.conversationId !== convB,
+	`${convB} → ${snapshot?.conversationId}`,
+);
 
-// --- conversations summary carries correct per-conv cwd ---
-const cwdOf = (id) => conversations.find((c) => c.id === id)?.cwd;
+// --- conversations summary: only current project, and nothing listed ---
+await sleep(300);
 check(
-	"conv1 summary cwd = A",
-	cwdOf(conv1) === A,
-	`conv1=${cwdOf(conv1)} conv2=${cwdOf(conv2)}`,
+	"conversations list stays empty (per-project + only listed)",
+	conversations.length === 0,
+	`${conversations.length} listed`,
 );
 check(
-	"conv2 summary cwd = B",
-	cwdOf(conv2) === B,
-	`conv2=${cwdOf(conv2)}`,
+	"workspace-switch notices fired",
+	notices.some((n) => n.includes("已切换到工作目录")),
+	notices.join(" | "),
 );
 
 console.log("--- conversation summaries ---");
-for (const c of conversations) console.log(`  ${c.id} title="${c.title}" cwd=${c.cwd}`);
+for (const c of conversations)
+	console.log(`  ${c.id} title="${c.title}" cwd=${c.cwd}`);
 console.log("--- notices ---");
 for (const n of notices) console.log("  ", n);
 

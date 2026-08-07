@@ -1,7 +1,9 @@
 /**
- * Left-panel sections + cross-directory conversations UI check:
- * divider between 打开的对话 / 历史对话, project labels on open chats,
- * and the workspace-switch notice when jumping directories.
+ * Left-panel sections + per-project workspace switching (UI):
+ *   fresh state shows only 历史对话 (no 运行的对话 — nothing has been
+ *   displaced while streaming), new_chat keeps the running list empty by
+ *   design, and switching workspace via the footer updates the file tree and
+ *   fires the 已切换到工作目录 notice.
  */
 import { chromium } from "playwright-core";
 import { execSync, spawn } from "node:child_process";
@@ -20,8 +22,6 @@ const A = mkdtempSync(join(tmpdir(), "pi-ui-a-"));
 const B = mkdtempSync(join(tmpdir(), "pi-ui-b-"));
 writeFileSync(join(A, "a.txt"), "a");
 writeFileSync(join(B, "b.txt"), "b");
-const nameA = A.split("/").pop();
-const nameB = B.split("/").pop();
 
 let failures = 0;
 const check = (name, ok, extra = "") => {
@@ -38,7 +38,9 @@ try {
 
 // Free the port from any straggler before spawning.
 try {
-	execSync(`lsof -ti :${PORT} -sTCP:LISTEN | xargs kill -9`, { stdio: "ignore" });
+	execSync(`lsof -ti :${PORT} -sTCP:LISTEN | xargs kill -9`, {
+		stdio: "ignore",
+	});
 } catch {
 	/* port free */
 }
@@ -66,7 +68,9 @@ await page.waitForSelector(".panel-left .panel-sessions", { timeout: 15000 });
 // Wait for the Chinese locale UI (conn label or section titles).
 await sleep(800);
 
-// 1. Fresh state: only 历史对话 title, no 打开的对话 (1 conv), no divider.
+// 1. Fresh state: only 历史对话 title; no 运行的对话 section, no divider
+//    (a single fresh conversation is never listed — it never ran in the
+//    background).
 let titles = await page
 	.locator(".panel-left .panel-section-title")
 	.allTextContents();
@@ -76,63 +80,68 @@ check(
 	titles.join("|"),
 );
 check(
-	"no 打开的对话 section yet (single conv)",
-	!titles.some((t) => t.includes("打开的对话")),
+	"no 运行的对话 section yet (nothing running in background)",
+	!titles.some((t) => t.includes("运行的对话")),
 	titles.join("|"),
 );
 
-// 2. Start a second conversation (still project A) → 打开的对话 + divider appear.
+// 2. Start a second conversation (still project A) — the fresh chat is not
+//    listed either, so the running section stays hidden by design.
 await page.evaluate(() => {
-	// Click the 新对话 button in the top bar by dispatching on the visible button.
 	const btn = [...document.querySelectorAll("button")].find(
 		(b) => b.textContent && b.textContent.includes("新对话"),
 	);
 	btn?.click();
 });
 await sleep(1200);
-titles = await page.locator(".panel-left .panel-section-title").allTextContents();
+titles = await page
+	.locator(".panel-left .panel-section-title")
+	.allTextContents();
 check(
-	"打开对话 + 历史对话 titles both present",
-	titles.some((t) => t.includes("打开的对话")) &&
-		titles.some((t) => t.includes("历史对话")),
+	"running list still empty after new_chat (by design)",
+	!titles.some((t) => t.includes("运行的对话")),
 	titles.join("|"),
 );
 check(
-	"divider line present",
-	(await page.locator(".panel-left .panel-section-divider").count()) === 1,
+	"no divider without running list",
+	(await page.locator(".panel-left .panel-section-divider").count()) === 0,
 );
 
-// 3. Switch workspace to project B (footer cwd input) → active conv rebuilds in B.
+// 3. Switch workspace to project B (footer cwd input) → file tree + notice.
 await page.locator(".status-cwd").click();
 await page.locator(".status-cwd-input").fill(B);
 await page.keyboard.press("Enter");
 await sleep(1500);
-
-// 4. Open-conversation entries must show their project labels (A and B).
-const cwdLabels = await page
-	.locator(".panel-left .session-item .session-cwd")
+const fileNames = await page
+	.locator(".panel-right .file-name-text")
 	.allTextContents();
 check(
-	"cross-directory conversation labels shown",
-	cwdLabels.some((t) => t.includes(nameA)) && cwdLabels.some((t) => t.includes(nameB)),
-	cwdLabels.join(" | "),
+	"file tree shows B's files after switch",
+	fileNames.some((t) => t.includes("b.txt")),
+	fileNames.join(" | "),
 );
-
-// 5. Switch back to the project-A conversation → workspace-switch notice fires.
-const noticeBefore = await page
+const notices = await page
 	.locator(".notice")
 	.allTextContents()
 	.catch(() => []);
-const convA = page.locator(".panel-left .session-item", {
-	has: page.locator(".session-cwd", { hasText: nameA }),
-});
-await convA.first().click();
-await sleep(1000);
-const notices = await page.locator(".notice").allTextContents().catch(() => []);
 check(
-	"cross-directory switch shows workspace notice",
-	notices.some((n) => n.includes("已切换到工作目录") || n.includes(A)),
-	notices.join(" | ") || `(before: ${noticeBefore.join(" | ")})`,
+	"workspace-switch notice fired",
+	notices.some((n) => n.includes("已切换到工作目录") || n.includes(B)),
+	notices.join(" | "),
+);
+
+// 4. Switch back to project A → file tree returns to A's files.
+await page.locator(".status-cwd").click();
+await page.locator(".status-cwd-input").fill(A);
+await page.keyboard.press("Enter");
+await sleep(1500);
+const fileNamesA = await page
+	.locator(".panel-right .file-name-text")
+	.allTextContents();
+check(
+	"file tree back to A's files",
+	fileNamesA.some((t) => t.includes("a.txt")),
+	fileNamesA.join(" | "),
 );
 
 await browser.close();

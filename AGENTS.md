@@ -36,7 +36,9 @@ pi-web-ui/
 │   ├── agent-service.ts        # 核心：ClientSession（每客户端一个会话组，可并行多个对话）+ AgentService
 │   │                           #   · 多对话并发：convs Map<convId, Conversation>，每个对话独立
 │   │                           #     AgentSessionRuntime（new_chat 不再杀旧对话，switch_conversation
-│   │                           #     只换 activeId；模型共享一个 ModelRuntime；消息序列化缓存按对话隔离）
+│   │                           #     只换 activeId；模型共享一个 ModelRuntime；消息序列化缓存按对话隔离；
+│   │                           #     set_cwd 切到目标项目自己的对话，不重建；「运行的对话」列表按项目、
+│   │                           #     运行中被挤到后台才入列，打开后不继续再切走才移出）
 │   │                           #   · WebUIContext：把扩展的 widget/status/dialog 桥接到浏览器
 │   │                           #   · 附件构建（inline/reference/lines 三种模式）
 │   │                           #   · readFile 预览（512KB 上限、二进制检测、路径越界拦截）
@@ -86,7 +88,7 @@ pi-web-ui/
 | 组件 | 职责 |
 | --- | --- |
 | `FilePreview.tsx` | 文件预览弹窗：行号、点选/拖拽/Shift 选区、添加到对话（lines 附件） |
-| `LeftPanel.tsx` | 左栏：最近项目（点击切换 cwd）+ 打开的对话（>1 个时显示，每条带所属项目标签，跨目录切换发 notice；固定在历史列表上方独立滚动）+ 历史对话（标题不随列表滚动） |
+| `LeftPanel.tsx` | 左栏：最近项目（点击切换 cwd）+ 运行的对话（≥1 个时显示，活跃高亮、流式绿点，按当前项目过滤；固定在历史列表上方独立滚动）+ 历史对话（标题不随列表滚动） |
 | `RightPanel.tsx` | 文件树浏览（list_files，目录过大时显示截断提示），文件名点击→预览，📎/🔗/👁 附件按钮 |
 | `ChatInput.tsx` | 输入框 + 附件 chips（inline/reference/lines 三色）；回复中显示「补充」按钮（followUp 排队，回复完成立即发送）+「停止」 |
 | `Message.tsx` / `MessageList.tsx` | 消息渲染：附件卡片（`stripFileWrapper` 剥 `<file>` 包装）、流式光标、tool 结果关联；超过 30 条后旧消息折叠为摘要行（`CollapsedMessage`，惰性渲染，点击展开，常量 `KEEP_RECENT`/`COLLAPSE_MIN` 在 MessageList 顶部） |
@@ -157,19 +159,29 @@ pi-web-ui/
 
 ### 其他桥接
 
-### 多对话并发
+### 多对话并发（每项目「运行的对话」）
 
 - 每客户端 `convs: Map<convId, Conversation>`，**每个对话一个独立 `AgentSessionRuntime`**：
   `new_chat` 新建 runtime + 新 session 文件（旧对话继续在后台跑，不中断）；
   `switch_conversation` 只换 `activeId`（不碰其他 runtime）；`runtime`/`session` 访问器指向当前活动对话。
-- 上限 `MAX_OPEN_CONVERSATIONS = 8`，超出时 new_chat 发 warning notice。
+  **对话按项目归属**：`conv.cwd` 即所属项目，每个项目各自的活动对话互不干扰。
+- **`set_cwd` 不再重建当前对话**——改为切到目标项目自己的对话（该项目最近活动的那个；
+  没有则新建一个并恢复该项目最近的持久会话）。离开项目的对话原地保留、后台继续跑，
+  标题/cwd 永远不会串项目（旧版「切项目后高亮对话名字还是上个项目」的根因就是重建）。
+- **「运行的对话」列表生命周期**（每个对话 `listed` / `promptedSinceActive` / `lastActiveAt` 三字段）：
+  - 入列：活动对话**正在流式输出时**被挤到后台（new_chat / switch_conversation / set_cwd）→ `listed=true`；
+  - 留在列表：后台跑完不移出（用户可能还没看结果）；
+  - 移出：打开它（切为活动）→ 没有继续对话（期间没发过 prompt）→ 切走时 `displaceActive()` 返回它，
+    `removeConversation` 释放 runtime（会话已持久化，历史列表仍可恢复）。从未入列的空对话在切走时同样释放。
+- 上限 `MAX_OPEN_CONVERSATIONS = 8` **按项目计**，超出时 new_chat 发 warning notice。
 - 所有对话共享**一个 ModelRuntime**（首个对话创建时播种，`makeRuntimeFactory` 传入复用）——
   顶栏换模型对全部对话生效。**消息序列化缓存（msgIds/uiMessageCache/签名）按对话隔离**：
   两个对话可能产生相同的 (role, timestamp) 键，共享会串号。
-- `snapshot` 带 `conversationId`；新增 `conversations`（ServerMessage）与 `switch_conversation`（ClientMessage）。
-- 行为不变的部分：`switch_session`（恢复持久会话）替换**当前**对话的 runtime；`set_cwd` 只重建**当前**对话；
+- `snapshot` 带 `conversationId`；`conversations`（ServerMessage）只推**当前项目已入列**的对话 + `activeId`
+  （activeId 可能未入列，如刚 new_chat 还没跑过）；`switch_conversation`（ClientMessage）只在同项目内切换。
+- 行为不变的部分：`switch_session`（恢复持久会话）替换**当前**对话的 runtime（成功后视作已继续）；
   `edit_message` 在**当前**对话内 fork；`dispose` 遍历销毁全部对话；attachSink 重连时补推 conversations。
-- 前端：左栏「打开的对话」区（>1 个时显示，活跃高亮、流式绿点），MessageList 以 conversationId 为 key 强制切换重挂载。
+- 前端：左栏「运行的对话」区（≥1 个时显示，活跃高亮、流式绿点），MessageList 以 conversationId 为 key 强制切换重挂载。
 
 - 扩展的 `setWidget/setStatus/notify/select/confirm/input` → `widgets/statuses/notice/dialog` 消息；
   对话框经 `dialog_response` 回传，Esc 视为取消。

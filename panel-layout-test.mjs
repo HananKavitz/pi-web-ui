@@ -1,6 +1,9 @@
 /**
- * Left-panel layout: open conversations are pinned above the scrolling
- * history; both section titles live OUTSIDE the scroll container.
+ * Left-panel layout: the running-conversations list is pinned above the
+ * scrolling history; both section titles live OUTSIDE the scroll container.
+ * (Without a background run the running list stays hidden — new chats are
+ * only listed once displaced while streaming — so the layout asserts the
+ * section stays absent and the history structure stays intact.)
  */
 import { chromium } from "playwright-core";
 import { execSync, spawn } from "node:child_process";
@@ -30,7 +33,9 @@ try {
 	process.exit(1);
 }
 try {
-	execSync(`lsof -ti :${PORT} -sTCP:LISTEN | xargs kill -9`, { stdio: "ignore" });
+	execSync(`lsof -ti :${PORT} -sTCP:LISTEN | xargs kill -9`, {
+		stdio: "ignore",
+	});
 } catch {}
 await sleep(400);
 const server = spawn("node", ["dist/server/index.js"], {
@@ -55,16 +60,20 @@ await page.waitForSelector(".panel-left .panel-sessions", { timeout: 15000 });
 await sleep(800);
 
 // 1. Single conversation → history title exists, no convs section.
-let histTitles = await page
+const histTitles = await page
 	.locator(".panel-sessions .panel-section-title")
 	.allTextContents();
-check("history title present", histTitles.some((t) => t.includes("历史对话")));
+check(
+	"history title present",
+	histTitles.some((t) => t.includes("历史对话")),
+);
 check(
 	"no convs section yet",
 	(await page.locator(".panel-left .panel-convs").count()) === 0,
 );
 
-// 2. Two more conversations → convs section appears, pinned ABOVE sessions.
+// 2. Two more new chats (still never ran, never displaced while streaming):
+//    the running-conversations section must STAY hidden by design.
 await page.evaluate(() => {
 	const btn = [...document.querySelectorAll("button")].find(
 		(b) => b.textContent && b.textContent.includes("新对话"),
@@ -80,10 +89,18 @@ await page.evaluate(() => {
 });
 await sleep(900);
 
-const convs = page.locator(".panel-left .panel-convs");
-check("convs section present", (await convs.count()) === 1);
-const convTitles = await convs.locator(".panel-section-title").allTextContents();
-check("convs title inside convs section", convTitles.some((t) => t.includes("打开的对话")));
+check(
+	"convs section still absent (no background run)",
+	(await page.locator(".panel-left .panel-convs").count()) === 0,
+);
+const convTitles = await page
+	.locator(".panel-left .panel-section-title")
+	.allTextContents();
+check(
+	"no 运行的对话 title without listed conversations",
+	!convTitles.some((t) => t.includes("运行的对话")),
+	convTitles.join("|"),
+);
 
 // 3. Structure: history title must be OUTSIDE the scroll container.
 const historyTitleInsideScroll = await page
@@ -95,23 +112,21 @@ check(
 	`inside=${historyTitleInsideScroll}`,
 );
 
-// 4. Scroll behavior: sessions-scroll scrolls; convs section is a sibling.
+// 4. Scroll behavior: sessions-scroll is the scrolling area.
 const styles = await page.evaluate(() => {
 	const ss = document.querySelector(".sessions-scroll");
-	const pc = document.querySelector(".panel-convs");
 	const gs = getComputedStyle;
 	return {
 		sessionsScrollOverflow: ss ? gs(ss).overflowY : "missing",
-		convsOverflow: pc ? gs(pc).overflowY : "missing",
-		convsInsideScroll: !!ss?.querySelector(".panel-convs"),
 		sessionsFlex: document.querySelector(".panel-sessions")
 			? gs(document.querySelector(".panel-sessions")).flex
 			: "missing",
 	};
 });
-check("sessions-scroll is the scrolling area", styles.sessionsScrollOverflow === "auto");
-check("convs not nested inside sessions-scroll", !styles.convsInsideScroll);
-check("convs section scrolls independently", styles.convsOverflow === "auto");
+check(
+	"sessions-scroll is the scrolling area",
+	styles.sessionsScrollOverflow === "auto",
+);
 
 // 5. Titles must not move when the sessions list scrolls.
 const before = await page.evaluate(() => {
@@ -125,7 +140,11 @@ const after = await page.evaluate(async () => {
 	const t = document.querySelector(".panel-sessions .panel-section-title");
 	return t ? t.getBoundingClientRect().top : null;
 });
-check("history title stays fixed after scroll", before !== null && before === after, `top=${before}→${after}`);
+check(
+	"history title stays fixed after scroll",
+	before !== null && before === after,
+	`top=${before}→${after}`,
+);
 
 await browser.close();
 server.kill("SIGKILL");

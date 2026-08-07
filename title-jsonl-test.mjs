@@ -1,7 +1,11 @@
 /**
- * Clean regression: after a prompt completes in project A, switching to
- * project B must refresh the conversation title (fresh session in B →
- * "新对话"), NOT keep/stale the A conversation's name.
+ * Per-project session recovery after a real turn:
+ *
+ *   prompt in A → session persisted with its title (visible via the history
+ *   list); set_cwd(B) dismisses the unlisted foreground conversation and gives
+ *   B its OWN conversation; set_cwd(A) back resumes the SAME persisted
+ *   session — nothing is lost when a conversation leaves the running list,
+ *   and titles never leak between projects.
  */
 import WebSocket from "ws";
 import { execSync, spawn } from "node:child_process";
@@ -31,10 +35,6 @@ try {
 	console.error("build failed");
 	process.exit(1);
 }
-try {
-	execSync(`lsof -ti :${PORT} -sTCP:LISTEN | xargs kill -9`, { stdio: "ignore" });
-} catch {}
-await sleep(400);
 const server = spawn("node", ["dist/server/index.js"], {
 	cwd: PROJ,
 	env: { ...process.env, PORT: String(PORT), PI_WEB_CWD: A },
@@ -54,6 +54,8 @@ const clientId = randomUUID();
 const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
 let snapshot = null;
 let conversations = [];
+let sessions = [];
+let fileContent = null;
 ws.on("message", (d) => {
 	let m;
 	try {
@@ -63,6 +65,8 @@ ws.on("message", (d) => {
 	}
 	if (m.type === "snapshot") snapshot = m.state;
 	else if (m.type === "conversations") conversations = m.conversations;
+	else if (m.type === "sessions") sessions = m.sessions;
+	else if (m.type === "file_content") fileContent = m;
 });
 ws.on("open", () => ws.send(JSON.stringify({ type: "hello", clientId })));
 
@@ -75,22 +79,11 @@ const waitFor = async (pred, what, timeout = 90000) => {
 	console.error(`TIMEOUT waiting for ${what}`);
 	return false;
 };
-const convOf = (id) => conversations.find((c) => c.id === id);
 
 await waitFor(() => snapshot !== null, "snapshot");
 const conv1 = snapshot.conversationId;
 
 // 0. jsonl must preview as text (read_file works).
-let fileContent = null;
-ws.on("message", (d) => {
-	let m;
-	try {
-		m = JSON.parse(d.toString());
-	} catch {
-		return;
-	}
-	if (m.type === "file_content") fileContent = m;
-});
 ws.send(JSON.stringify({ type: "read_file", path: "data.jsonl" }));
 await waitFor(() => fileContent !== null, "file_content for jsonl", 8000);
 check(
@@ -101,32 +94,69 @@ check(
 	fileContent ? `kind=${fileContent.kind}` : "no file_content",
 );
 
-// 1. Prompt in A, wait for the turn to fully complete AND the title to update.
+// 1. Prompt in A, wait for the turn to complete and the session to be
+//    persisted with its title (the ACTIVE conversation is not in the running
+//    list — it only enters when displaced while streaming — so the title is
+//    observed via the history list instead).
 ws.send(JSON.stringify({ type: "prompt", text: "只回复两个字：好的" }));
 const titled = await waitFor(
-	() => {
-		const c = convOf(conv1);
-		return c && c.title && c.title !== "新对话";
-	},
-	"conv title updates after turn",
+	() => sessions.some((s) => s.firstMessage?.includes("只回复")),
+	"session persisted with title",
 );
-const titleA = convOf(conv1)?.title;
-check("title reflects project A message", titled && titleA?.includes("只回复"), `title="${titleA}"`);
+check(
+	"session persisted with project A title",
+	titled,
+	sessions.map((s) => s.firstMessage).join(" | "),
+);
+const done = await waitFor(
+	() => snapshot?.messages?.some((m) => m.role === "assistant"),
+	"assistant reply completes",
+);
+check("turn completes with a reply", done);
 
-// 2. Switch project to B.
+// 2. Switch project to B: the unlisted foreground conversation is dismissed;
+//    B gets its own conversation id, and B has no history.
 ws.send(JSON.stringify({ type: "set_cwd", path: B }));
 const moved = await waitFor(
-	() => convOf(conv1)?.cwd === B,
-	"conv cwd → B",
+	() =>
+		snapshot?.conversationId &&
+		snapshot.conversationId !== conv1 &&
+		snapshot?.cwd === B,
+	"B conversation active",
 	15000,
 );
-check("conversation moved to project B", moved, convOf(conv1)?.cwd);
-await sleep(800); // let any follow-up conversations emit settle
-const titleB = convOf(conv1)?.title;
+check("B gets its OWN conversation id", moved, snapshot?.conversationId);
+await sleep(800);
 check(
-	"title refreshed after project switch (B has no history → 新对话)",
-	titleB === "新对话" || titleB === undefined,
-	`A="${titleA}" B="${titleB}"`,
+	"no running conversations listed",
+	conversations.length === 0,
+	`${conversations.length} listed`,
+);
+check(
+	"project B has no history",
+	sessions.length === 0,
+	sessions.map((s) => s.firstMessage).join(" | "),
+);
+
+// 3. Back to A: a new conversation resumes the persisted session — title and
+//    messages are intact (nothing was lost when the foreground chat left).
+ws.send(JSON.stringify({ type: "set_cwd", path: A }));
+const back = await waitFor(
+	() =>
+		snapshot?.cwd === A &&
+		sessions.some((s) => s.firstMessage?.includes("只回复")),
+	"A session resumable again",
+	15000,
+);
+check(
+	"A's persisted session is still there (recoverable)",
+	back,
+	sessions.map((s) => s.firstMessage).join(" | "),
+);
+check(
+	"no title leak between projects (B conv is a different id)",
+	snapshot?.conversationId !== conv1,
+	`${conv1} → ${snapshot?.conversationId}`,
 );
 
 ws.close();

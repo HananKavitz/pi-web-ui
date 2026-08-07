@@ -752,6 +752,19 @@ interface Conversation {
 	session: AgentSession;
 	cwd: string;
 	createdAt: number;
+	/** In the per-project "running conversations" list. A conversation enters
+	 *  the list when it is displaced to the background while still streaming;
+	 *  it leaves (and its runtime is freed) when it is opened again and left
+	 *  without continuing. */
+	listed: boolean;
+	/** A prompt was sent while this conversation was active (cleared whenever
+	 *  it becomes active). A listed conversation that is displaced while idle
+	 *  with this still false counts as "opened but not continued" and is
+	 *  dismissed from the list. */
+	promptedSinceActive: boolean;
+	/** Last time this conversation became active — set_cwd picks the target
+	 *  project's most recently active conversation. */
+	lastActiveAt: number;
 	/** Session event subscription — events are routed to THIS conversation. */
 	unsubscribe?: () => void;
 	// Per-conversation serialization caches. Message ids derive from
@@ -766,7 +779,8 @@ interface Conversation {
 	queueFollowUp: number;
 }
 
-/** Cap on simultaneously open conversations (each keeps a full runtime alive). */
+/** Cap on simultaneously open conversations of ONE project (each keeps a full
+ *  runtime alive; conversations of other projects keep their own lists). */
 const MAX_OPEN_CONVERSATIONS = 8;
 const DEFAULT_CONV_TITLE = "新对话";
 
@@ -946,6 +960,11 @@ export class ClientSession {
 			session: runtime.session,
 			cwd: runtime.cwd,
 			createdAt: Date.now(),
+			// A brand-new conversation is not yet in the running list — it enters
+			// only when it is displaced to the background while still streaming.
+			listed: false,
+			promptedSinceActive: false,
+			lastActiveAt: Date.now(),
 			msgIds: new Map(),
 			nextMsgId: 1,
 			uiMessageCache: new Map(),
@@ -967,8 +986,9 @@ export class ClientSession {
 		if (widgets.length > 0) send({ type: "widgets", widgets });
 		const statuses = this.webUi.statusSnapshot();
 		if (statuses.length > 0) send({ type: "statuses", statuses });
-		// Reconnect: push the open-conversation list so the left panel shows
-		// every chat (a fresh socket never got the newChat/switch pushes).
+		// Reconnect: push the current project's running-conversation list so the
+		// left panel shows every background chat (a fresh socket never got the
+		// newChat/switch pushes).
 		this.emitConversations();
 	}
 
@@ -1797,6 +1817,11 @@ export class ClientSession {
 			conv.title = trimmed.length > 30 ? `${trimmed.slice(0, 30)}…` : trimmed;
 			this.emitConversations();
 		}
+		// The active conversation has been continued since it was opened — it
+		// must not be dismissed when the user switches away. (Also bumps the
+		// per-project "most recently active" order used by set_cwd.)
+		conv.promptedSinceActive = true;
+		conv.lastActiveAt = Date.now();
 		this.flushSnapshot();
 	}
 
@@ -2118,7 +2143,9 @@ export class ClientSession {
 	async newChat(): Promise<void> {
 		// Reuse an already-open blank conversation instead of piling up new ones
 		// on every click: if the active chat has no messages it IS the new chat
-		// (focus already on it); otherwise switch to the first blank one.
+		// (focus already on it); otherwise switch to the first blank one (under
+		// the per-project running-list model displaced blanks are disposed, so
+		// this branch normally can't exist — kept as a safety net).
 		const isBlank = (c: Conversation): boolean => {
 			try {
 				return c.session.getSessionStats().totalMessages === 0;
@@ -2140,14 +2167,23 @@ export class ClientSession {
 				return;
 			}
 		}
-		if (this.convs.size >= MAX_OPEN_CONVERSATIONS) {
+		// Cap is per project — conversations of other projects keep their own
+		// lists and don't consume this project's slots.
+		const openInProject = [...this.convs.values()].filter(
+			(c) => c.cwd === this.cwd,
+		).length;
+		if (openInProject >= MAX_OPEN_CONVERSATIONS) {
 			this.emit({
 				type: "notice",
 				level: "warning",
-				text: `打开的对话已达上限（${MAX_OPEN_CONVERSATIONS} 个），请先切换或重载页面关闭`,
+				text: `当前项目运行的对话已达上限（${MAX_OPEN_CONVERSATIONS} 个），请先打开某个对话并离开（不继续对话）以移出列表`,
 			});
 			return;
 		}
+		// The outgoing conversation is left behind — apply the running-list
+		// lifecycle. Removal is deferred until the new chat exists so the active
+		// conversation stays valid during the (async) runtime creation.
+		const displaced = this.displaceActive();
 		try {
 			const runtime = await createAgentSessionRuntime(
 				this.makeRuntimeFactory(),
@@ -2160,6 +2196,7 @@ export class ClientSession {
 			const conv = this.makeConversation(runtime);
 			this.convs.set(conv.id, conv);
 			this.activeId = conv.id;
+			if (displaced) this.removeConversation(displaced.id);
 			await this.bindSession();
 			this.emitConversations();
 		} catch (err) {
@@ -2172,35 +2209,61 @@ export class ClientSession {
 		this.flushSnapshot();
 	}
 
+	/**
+	 * The active conversation is being left (new_chat / switch_conversation /
+	 * set_cwd). Runs the running-list lifecycle:
+	 *
+	 * - still streaming → it becomes a background run: ensure it is listed;
+	 * - idle + listed + continued → keep it (the user did continue it);
+	 * - idle + listed + opened-but-not-continued, or never listed at all → the
+	 *   caller must drop it (returns it so removal happens only after the
+	 *   active conversation has been switched away).
+	 */
+	private displaceActive(): Conversation | null {
+		const conv = this.conv;
+		if (conv.session.isStreaming) {
+			conv.listed = true;
+			return null;
+		}
+		if (conv.listed && conv.promptedSinceActive) return null;
+		return conv;
+	}
+
+	/** Remove a conversation from the running list and free its runtime. The
+	 *  session stays persisted on disk, so it remains recoverable from the
+	 *  history list. Never removes the active conversation. */
+	private removeConversation(id: string): void {
+		const conv = this.convs.get(id);
+		if (!conv || id === this.activeId) return;
+		this.convs.delete(id);
+		conv.unsubscribe?.();
+		conv.unsubscribe = undefined;
+		void conv.runtime.dispose().catch(() => {});
+	}
+
 	/** Switch the ACTIVE conversation without interrupting any other chat. */
 	async switchConversation(id: string): Promise<void> {
 		if (!this.convs.has(id) || id === this.activeId) return;
-		const prevCwd = this.cwd;
+		const displaced = this.displaceActive();
 		this.activeId = id;
 		this.cwd = this.conv.cwd;
-		// Cross-directory jump: make the workspace switch explicit so the user
-		// isn't surprised when the file tree / footer / history all change.
-		if (this.cwd !== prevCwd) {
-			this.emit({
-				type: "notice",
-				level: "info",
-				text: `已切换到工作目录：${this.cwd}`,
-			});
-		}
+		// All listed conversations share the current project's cwd, so this is
+		// normally a no-op — kept defensive for stale clients.
+		if (displaced) this.removeConversation(displaced.id);
+		this.conv.promptedSinceActive = false;
+		this.conv.lastActiveAt = Date.now();
 		this.webUi.refresh();
 		this.emitConversations();
-		// Workspace-bound panels (session list / file tree / commands) follow
-		// the active conversation's cwd.
-		void this.refreshSessions();
-		void this.listFiles(undefined);
-		void this.listCommands();
 		this.flushSnapshot();
 	}
 
-	/** Push the open-conversation list to the client. */
+	/** Push the current project's running-conversation list to the client. */
 	private emitConversations(): void {
 		const conversations: ConversationSummary[] = [];
 		for (const conv of this.convs.values()) {
+			// The running-conversation list is per project and only contains
+			// conversations that were displaced to the background while running.
+			if (conv.cwd !== this.cwd || !conv.listed) continue;
 			let messageCount = 0;
 			let isStreaming = false;
 			try {
@@ -2289,6 +2352,9 @@ export class ClientSession {
 			this.conv.cwd = this.runtime.cwd;
 			this.cwd = this.runtime.cwd;
 			this.conv.title = conversationTitle(this.runtime.session);
+			// Deliberately resumed — must not be dismissed when the user later
+			// switches away without sending a new message.
+			this.conv.promptedSinceActive = true;
 			this.emitConversations();
 		} catch (err) {
 			this.emit({
@@ -2629,9 +2695,12 @@ export class ClientSession {
 	}
 
 	/**
-	 * Switch the agent's working directory by rebuilding the runtime for the new
-	 * cwd (services are cwd-bound). Resumes that directory's most recent session;
-	 * refreshes snapshot, session list, and file tree.
+	 * Switch the agent's working directory by switching the ACTIVE conversation
+	 * to the target project's own most recently active conversation (creating a
+	 * fresh one that resumes that project's most recent session on first
+	 * visit). Conversations of other projects keep running untouched in their
+	 * own per-project lists — nothing is rebuilt, so titles/cwds never leak
+	 * between projects.
 	 */
 	async setCwd(newCwd: string): Promise<void> {
 		try {
@@ -2652,43 +2721,62 @@ export class ClientSession {
 				return;
 			}
 
-			// Build the new runtime first — only swap the ACTIVE conversation on
-			// success (other open conversations keep their own cwd + runtime).
-			const newRuntime = await createAgentSessionRuntime(
-				this.makeRuntimeFactory(),
-				{
-					cwd: abs,
-					agentDir: this.agentDir,
-					sessionManager: SessionManager.continueRecent(abs, this.sessionDir),
-				},
-			);
-			const conv = this.conv;
-			const oldRuntime = conv.runtime;
-			conv.runtime = newRuntime;
-			conv.session = newRuntime.session;
-			conv.cwd = abs;
-			// The rebuilt runtime resumed the new project's most recent session —
-			// refresh the title too, or the conversation list shows the old name.
-			conv.title = conversationTitle(newRuntime.session);
+			// The outgoing conversation is left behind — apply the running-list
+			// lifecycle (removal is deferred until the active conversation is
+			// safely switched away).
+			const displaced = this.displaceActive();
+
+			// Prefer the target project's own most recently active conversation;
+			// only create a fresh one (resuming its most recent session) when the
+			// project has none open yet.
+			let target: Conversation | undefined;
+			for (const c of this.convs.values()) {
+				if (
+					c.cwd === abs &&
+					(!target || c.lastActiveAt > target.lastActiveAt)
+				) {
+					target = c;
+				}
+			}
+
+			if (target) {
+				this.activeId = target.id;
+				if (displaced) this.removeConversation(displaced.id);
+			} else {
+				// First visit to this project: resume its most recent session.
+				const newRuntime = await createAgentSessionRuntime(
+					this.makeRuntimeFactory(),
+					{
+						cwd: abs,
+						agentDir: this.agentDir,
+						sessionManager: SessionManager.continueRecent(abs, this.sessionDir),
+					},
+				);
+				const conv = this.makeConversation(newRuntime);
+				this.convs.set(conv.id, conv);
+				this.activeId = conv.id;
+				if (displaced) this.removeConversation(displaced.id);
+				for (const d of newRuntime.diagnostics) {
+					if (d.type !== "info") {
+						this.emit({ type: "notice", level: d.type, text: d.message });
+					}
+				}
+				await this.bindSession();
+			}
+
+			this.conv.promptedSinceActive = false;
+			this.conv.lastActiveAt = Date.now();
 			this.cwd = abs;
 			// Remember the new workspace (restore target + recent-project entry).
 			this.stateStore.remember(this.clientId, abs);
 			void this.pushProjects();
-			conv.unsubscribe?.();
-			conv.unsubscribe = undefined;
-			await this.bindSession();
-			await oldRuntime.dispose().catch(() => {});
-			for (const d of newRuntime.diagnostics) {
-				if (d.type !== "info") {
-					this.emit({ type: "notice", level: d.type, text: d.message });
-				}
-			}
+			this.webUi.refresh();
+			this.emitConversations();
 			this.emit({
 				type: "notice",
 				level: "info",
 				text: `已切换到工作目录：${abs}`,
 			});
-			this.emitConversations();
 			void this.refreshSessions();
 			void this.listFiles(undefined);
 			// Commands are per-project (.pi/commands.json in the current cwd).

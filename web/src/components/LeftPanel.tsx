@@ -71,47 +71,36 @@ export function LeftPanel({ chat, send }: LeftPanelProps) {
 					})}
 				</div>
 			)}
-			{chat.conversations.length > 1 && (
+			{chat.conversations.length > 0 && (
 				<div className="panel-convs">
-					<div className="panel-section-title">
-						{t("openConversations")}
-					</div>
-						{chat.conversations.map((c) => {
-							const active = chat.activeConversationId === c.id;
-							return (
-								<button
-									type="button"
-									key={c.id}
-									className={`session-item ${active ? "active" : ""}`}
-									title={`${c.title} — ${c.cwd}`}
-									onClick={() => {
-										if (!active)
-											send({ type: "switch_conversation", id: c.id });
-									}}
-								>
-									<FiMessageSquare className="session-icon" />
-									<span className="session-info">
-										<span className="session-title">{c.title}</span>
-										<span className="session-sub">
-											{/* Cross-directory conversations carry their own project —
-											show it so switching doesn't surprise. */}
-											<span className="session-cwd" title={c.cwd}>
-												<FiFolder /> {projectName(c.cwd)}
-											</span>
-											{active
-												? t("current")
-												: t("messageCount", { n: c.messageCount })}
-										</span>
+					<div className="panel-section-title">{t("runningConversations")}</div>
+					{chat.conversations.map((c) => {
+						const active = chat.activeConversationId === c.id;
+						return (
+							<button
+								type="button"
+								key={c.id}
+								className={`session-item ${active ? "active" : ""}`}
+								title={c.title}
+								onClick={() => {
+									if (!active) send({ type: "switch_conversation", id: c.id });
+								}}
+							>
+								<FiMessageSquare className="session-icon" />
+								<span className="session-info">
+									<span className="session-title">{c.title}</span>
+									<span className="session-sub">
+										{active
+											? t("current")
+											: t("messageCount", { n: c.messageCount })}
 									</span>
-									{c.isStreaming && (
-										<span
-											className="conv-streaming"
-											title={t("streaming")}
-										/>
-									)}
-								</button>
-							);
-						})}
+								</span>
+								{c.isStreaming && (
+									<span className="conv-streaming" title={t("streaming")} />
+								)}
+							</button>
+						);
+					})}
 					<div className="panel-section-divider" />
 				</div>
 			)}
@@ -121,36 +110,38 @@ export function LeftPanel({ chat, send }: LeftPanelProps) {
 					{sessions.length === 0 && (
 						<div className="panel-empty">{t("noHistory")}</div>
 					)}
-				{sessions.map((s) => {
-					const active = currentFile === s.path;
-					return (
-						<button
-							type="button"
-							key={s.path}
-							className={`session-item ${active ? "active" : ""}`}
-							title={s.path}
-							onClick={() => {
-								if (!active) send({ type: "switch_session", path: s.path });
-							}}
-						>
-							<FiMessageSquare className="session-icon" />
-							<span className="session-info">
-								<span className="session-title">{displayName(s)}</span>
-								<span className="session-sub">
-									{active
-										? t("current")
-										: t("messageCount", { n: s.messageCount })}
-									{s.source === "tui" && (
-										<span className="session-src" title={t("tuiTip")}>
-											TUI
-										</span>
-									)}
+					{sessions.map((s) => {
+						const active = currentFile === s.path;
+						return (
+							<button
+								type="button"
+								key={s.path}
+								className={`session-item ${active ? "active" : ""}`}
+								title={s.path}
+								onClick={() => {
+									if (!active) send({ type: "switch_session", path: s.path });
+								}}
+							>
+								<FiMessageSquare className="session-icon" />
+								<span className="session-info">
+									<span className="session-title">{displayName(s)}</span>
+									<span className="session-sub">
+										{active
+											? t("current")
+											: t("messageCount", { n: s.messageCount })}
+										{s.source === "tui" && (
+											<span className="session-src" title={t("tuiTip")}>
+												TUI
+											</span>
+										)}
+									</span>
 								</span>
-							</span>
-							<span className="session-time">{formatModified(s.modified)}</span>
-						</button>
-					);
-				})}
+								<span className="session-time">
+									{formatModified(s.modified)}
+								</span>
+							</button>
+						);
+					})}
 				</div>
 			</div>
 			<button

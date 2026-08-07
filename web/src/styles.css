@@ -148,7 +148,7 @@ body {
 	padding-bottom: 56px;
 }
 
-/* Open conversations: pinned above the scrolling history (like projects),
+/* Running conversations: pinned above the scrolling history (like projects),
    so the two sections never scroll together and both titles stay visible. */
 .panel-convs {
 	flex-shrink: 0;
@@ -394,35 +394,14 @@ body {
 	color: var(--text-faint);
 }
 
-/* Divider between the open-conversations and history sections. */
+/* Divider between the running-conversations and history sections. */
 .panel-section-divider {
 	height: 1px;
 	background: var(--border);
 	margin: 6px 10px;
 }
 
-/* Project label on open-conversation entries (conversations span cwds). */
-.session-cwd {
-	display: inline-flex;
-	align-items: center;
-	gap: 3px;
-	margin-right: 6px;
-	font-size: 10px;
-	padding: 0 5px;
-	border-radius: 4px;
-	background: rgba(139, 92, 246, 0.1);
-	color: var(--text-dim);
-	max-width: 140px;
-	overflow: hidden;
-	white-space: nowrap;
-	text-overflow: ellipsis;
-	vertical-align: 1px;
-}
-.session-cwd svg {
-	flex-shrink: 0;
-}
-
-/* Open-conversation streaming indicator (left panel). */
+/* Streaming indicator on running-conversation entries (left panel). */
 .conv-streaming {
 	width: 7px;
 	height: 7px;

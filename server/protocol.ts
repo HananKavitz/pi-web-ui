@@ -82,7 +82,7 @@ export interface UiState {
 	cwd: string;
 	sessionId: string;
 	sessionFile?: string;
-	/** Id of the ACTIVE open conversation (see `conversations` message). */
+	/** Id of the ACTIVE conversation (see `conversations` message). */
 	conversationId: string;
 	messages: UiMessage[];
 	/**
@@ -290,7 +290,10 @@ export interface ProviderStatus {
 	/** Where auth came from: stored / runtime / environment / models_json_key … */
 	source?: string;
 }
-/** One open conversation of the client (each runs its own session, in parallel). */
+/** One RUNNING conversation of the current project (each runs its own session
+ *  in parallel). The list is per project and only contains conversations that
+ *  were displaced to the background while still streaming; background-finish
+ *  keeps them listed, opening-and-leaving-without-continuing removes them. */
 export interface ConversationSummary {
 	id: string;
 	/** Display title: first user prompt (truncated) or the default. */
@@ -304,6 +307,9 @@ export type ServerMessage =
 	| { type: "ready"; clientId: string; serverVersion: string }
 	| { type: "snapshot"; state: UiState }
 	| {
+			// Per-project running-conversation list (see ConversationSummary):
+			// only conversations of the CURRENT cwd that are listed. activeId is
+			// the active conversation even when it isn't listed (fresh chat).
 			type: "conversations";
 			conversations: ConversationSummary[];
 			activeId: string;
