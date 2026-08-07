@@ -1,7 +1,6 @@
 {
   "name": "pi-web-ui",
-  "version": "0.9.3",
-  "version": "0.9.3",
+  "version": "0.10.0",
   "description": "Web chat interface for the pi coding agent, powered by the pi SDK (@earendil-works/pi-coding-agent) — one-command run, Docker/systemd/launchd deployable",
   "license": "MIT",
   "type": "module",
@@ -14,11 +13,13 @@
     "dist/",
     "web/dist/",
     "deploy/",
+    "extensions/",
     "README.md",
     "LICENSE"
   ],
   "keywords": [
     "pi",
+    "pi-package",
     "coding-agent",
     "ai",
     "chat",
@@ -29,6 +30,11 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/xing-shuyin/pi-web-ui.git"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
   },
   "engines": {
     "node": ">=22.19.0"
