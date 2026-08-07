@@ -297,9 +297,9 @@ const SHORTCUT_LNK_NAME = "pi-web-ui.lnk"; // Windows 桌面快捷方式
 const SHORTCUT_MAC_NAME = "pi-web-ui.command"; // macOS 双击启动器
 const SHORTCUT_LINUX_NAME = "pi-web-ui.desktop"; // Linux 桌面图标
 
-/** Branded .ico shipped in the package; the .lnk / .desktop icon points at it. */
-const APP_ICO_NAME = "pi-web-ui.ico";
-const APP_ICO_PACKAGE = join(BIN_DIR, "..", APP_ICO_NAME);
+/** 快捷方式图标（品牌 .ico，随包发布；.lnk / .desktop 指向它）。 */
+const APP_ICO_NAME = "pi-web-ui.ico"; // 复制到用户目录后的稳定文件名
+const APP_ICO_SOURCE = join(BIN_DIR, "..", "web", "public", "icon.ico"); // 包内品牌图标源文件
 /** Branded SVG logo (source of truth: web/public/favicon.svg) — used on Linux. */
 const APP_SVG_PACKAGE = join(BIN_DIR, "..", "web", "public", "favicon.svg");
 
@@ -455,10 +455,10 @@ function installWinShortcut(opts) {
 	mkdirSync(dirname(ps1Path), { recursive: true });
 	writeFileSync(ps1Path, "\uFEFF" + ps1, "utf8"); // PS 5.1 需要 BOM
 	// 把品牌图标准备好：复制到用户目录（.lnk 图标指向稳定路径）
-	if (existsSync(APP_ICO_PACKAGE)) {
-		copyFileSync(APP_ICO_PACKAGE, winIcoPath());
+	if (existsSync(APP_ICO_SOURCE)) {
+		copyFileSync(APP_ICO_SOURCE, winIcoPath());
 	} else {
-		console.log(`⚠ 未找到品牌图标 ${APP_ICO_PACKAGE}，快捷方式将使用默认图标`);
+		console.log(`⚠ 未找到品牌图标 ${APP_ICO_SOURCE}，快捷方式将使用默认图标`);
 	}
 	const powershell = winPowershell();
 	const ps = [
@@ -623,7 +623,7 @@ Categories=Network;WebBrowser;
 	mkdirSync(scriptDir, { recursive: true });
 	// 品牌图标（缺失时跳过，桌面自动回退默认图标）
 	if (existsSync(APP_SVG_PACKAGE)) copyFileSync(APP_SVG_PACKAGE, svgPath);
-	else if (existsSync(APP_ICO_PACKAGE)) copyFileSync(APP_ICO_PACKAGE, icoPath);
+	else if (existsSync(APP_ICO_SOURCE)) copyFileSync(APP_ICO_SOURCE, icoPath);
 	writeFileSync(scriptPath, script);
 	chmodSync(scriptPath, 0o755);
 	writeFileSync(desktopPath, desktop);
