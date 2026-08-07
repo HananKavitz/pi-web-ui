@@ -772,6 +772,8 @@ interface Conversation {
 	// these must never be shared across conversations.
 	msgIds: Map<string, number>;
 	nextMsgId: number;
+	/** Per-timestamp 1-based user-message seq (drives the `u-<ts>-<seq>` id suffix). */
+	userSeqByTs: Map<number, number>;
 	uiMessageCache: Map<string, UiMessage>;
 	lastMessagesSig: string;
 	lastMessagesArray: UiMessage[];
@@ -967,6 +969,7 @@ export class ClientSession {
 			lastActiveAt: Date.now(),
 			msgIds: new Map(),
 			nextMsgId: 1,
+			userSeqByTs: new Map(),
 			uiMessageCache: new Map(),
 			lastMessagesSig: "",
 			lastMessagesArray: [],
@@ -1100,7 +1103,18 @@ export class ClientSession {
 		const cacheKey = `${key}#${n}`;
 		const cached = conv.uiMessageCache.get(cacheKey);
 		if (cached) return cached;
-		const msg = serializeMessage(m, n);
+		// User-message id suffix is a 1-based count of user messages sharing
+		// this timestamp (that's what resolveUserMessageEntryId() expects). n is
+		// a global per-conversation counter across ALL roles, so it can't be
+		// reused as the seq — otherwise editing anything but the first question
+		// fails to resolve ("找不到要编辑的消息").
+		let seq = n;
+		if (m.role === "user") {
+			const ts = m.timestamp ?? 0;
+			seq = (conv.userSeqByTs.get(ts) ?? 0) + 1;
+			conv.userSeqByTs.set(ts, seq);
+		}
+		const msg = serializeMessage(m, seq);
 		if (msg) conv.uiMessageCache.set(cacheKey, msg);
 		return msg;
 	}
@@ -2380,7 +2394,10 @@ export class ClientSession {
 		const ts = Number(m[1]);
 		const seq = m[2] ? Number(m[2]) : 1;
 		let count = 0;
-		for (const entry of this.session.sessionManager.getEntries()) {
+		// Resolve against the compaction-aware current leaf path — the same list
+		// the UI renders (state.messages). Scanning the whole file (getEntries)
+		// could match a summarized entry or one on a different branch.
+		for (const entry of this.session.sessionManager.buildContextEntries()) {
 			if (entry.type !== "message") continue;
 			const msg = (entry as unknown as { message?: AgentMessage }).message;
 			if (!msg || msg.role !== "user" || msg.timestamp !== ts) continue;
