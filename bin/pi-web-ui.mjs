@@ -298,8 +298,8 @@ const SHORTCUT_MAC_NAME = "pi-web-ui.command"; // macOS 双击启动器
 const SHORTCUT_LINUX_NAME = "pi-web-ui.desktop"; // Linux 桌面图标
 
 /** 快捷方式图标（品牌 .ico，随包发布；.lnk / .desktop 指向它）。 */
-const APP_ICO_NAME = "pi-web-ui.ico"; // 复制到用户目录后的稳定文件名
-const APP_ICO_SOURCE = join(BIN_DIR, "..", "web", "public", "icon.ico"); // 包内品牌图标源文件
+const APP_ICO_NAME = "pi-web-ui-logo.ico"; // 复制到用户目录后的稳定文件名（避开 pi-web-ui.ico —— Windows 对该路径有损坏的图标缓存残留，见 issue #xxx）
+const APP_ICO_SOURCE = join(BIN_DIR, "..", "web", "public", "icon.ico"); // 包内品牌图标源文件（10 帧多分辨率，DPI 密度帧保证桌面/任务栏各尺寸颜色不失真）
 /** Branded SVG logo (source of truth: web/public/favicon.svg) — used on Linux. */
 const APP_SVG_PACKAGE = join(BIN_DIR, "..", "web", "public", "favicon.svg");
 
