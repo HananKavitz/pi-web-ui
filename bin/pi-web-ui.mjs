@@ -26,6 +26,7 @@ import { spawnSync } from "node:child_process";
 import { get as httpGet } from "node:http";
 import {
 	chmodSync,
+	copyFileSync,
 	existsSync,
 	mkdirSync,
 	realpathSync,
@@ -292,9 +293,20 @@ function winTaskExists(name) {
 // 桌面快捷方式（server shortcut）
 // ---------------------------------------------------------------------------
 
-const SHORTCUT_LNK_NAME = "pi-web-ui 启动.lnk"; // Windows 桌面快捷方式
-const SHORTCUT_MAC_NAME = "pi-web-ui 启动.command"; // macOS 双击启动器
+const SHORTCUT_LNK_NAME = "pi-web-ui.lnk"; // Windows 桌面快捷方式
+const SHORTCUT_MAC_NAME = "pi-web-ui.command"; // macOS 双击启动器
 const SHORTCUT_LINUX_NAME = "pi-web-ui.desktop"; // Linux 桌面图标
+
+/** Branded .ico shipped in the package; the .lnk / .desktop icon points at it. */
+const APP_ICO_NAME = "pi-web-ui.ico";
+const APP_ICO_PACKAGE = join(BIN_DIR, "..", APP_ICO_NAME);
+/** Branded SVG logo (source of truth: web/public/favicon.svg) — used on Linux. */
+const APP_SVG_PACKAGE = join(BIN_DIR, "..", "web", "public", "favicon.svg");
+
+/** Windows: per-user copy of the branded .ico (stable path for the .lnk icon). */
+function winIcoPath() {
+	return join(winServiceDir(), APP_ICO_NAME);
+}
 
 /** Full path to Windows PowerShell 5.1. */
 function winPowershell() {
@@ -442,7 +454,12 @@ function installWinShortcut(opts) {
 	}
 	mkdirSync(dirname(ps1Path), { recursive: true });
 	writeFileSync(ps1Path, "\uFEFF" + ps1, "utf8"); // PS 5.1 需要 BOM
-	const node = realNode();
+	// 把品牌图标准备好：复制到用户目录（.lnk 图标指向稳定路径）
+	if (existsSync(APP_ICO_PACKAGE)) {
+		copyFileSync(APP_ICO_PACKAGE, winIcoPath());
+	} else {
+		console.log(`⚠ 未找到品牌图标 ${APP_ICO_PACKAGE}，快捷方式将使用默认图标`);
+	}
 	const powershell = winPowershell();
 	const ps = [
 		"$ErrorActionPreference = 'Stop'",
@@ -453,7 +470,7 @@ function installWinShortcut(opts) {
 		`$lnk.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File ' + ${psQuote('"' + ps1Path + '"')}`,
 		`$lnk.WorkingDirectory = ${psQuote(cwd)}`,
 		"$lnk.Description = 'pi-web-ui — 双击启动服务并打开浏览器'",
-		`$lnk.IconLocation = ${psQuote(node)} + ',0'`,
+		`$lnk.IconLocation = ${psQuote(winIcoPath())} + ',0'`,
 		"$lnk.Save()",
 		`Write-Output (Join-Path $desktop ${psQuote(SHORTCUT_LNK_NAME)})`,
 	].join("\r\n");
@@ -584,13 +601,17 @@ function installLinuxShortcut(opts) {
 	const scriptDir = join(homedir(), ".local", "share", "pi-web-ui");
 	const scriptPath = join(scriptDir, `${name}-start.sh`);
 	const desktopPath = join(homedir(), "Desktop", SHORTCUT_LINUX_NAME);
+	const icoPath = join(scriptDir, APP_ICO_NAME); // 备用；优先 SVG
+	const svgPath = join(scriptDir, "pi-web-ui.svg");
 	const script = buildLinuxStartScript(name, url);
+	const desktopIcon = existsSync(APP_SVG_PACKAGE) ? svgPath : APP_ICO_NAME;
 	const desktop = `[Desktop Entry]
 Version=1.0
 Type=Application
 Name=pi-web-ui
 Comment=启动 pi-web-ui 服务并打开浏览器
 Exec=${shQuote(scriptPath)}
+Icon=${shQuote(desktopIcon)}
 Terminal=false
 Categories=Network;WebBrowser;
 `;
@@ -600,6 +621,9 @@ Categories=Network;WebBrowser;
 		return;
 	}
 	mkdirSync(scriptDir, { recursive: true });
+	// 品牌图标（缺失时跳过，桌面自动回退默认图标）
+	if (existsSync(APP_SVG_PACKAGE)) copyFileSync(APP_SVG_PACKAGE, svgPath);
+	else if (existsSync(APP_ICO_PACKAGE)) copyFileSync(APP_ICO_PACKAGE, icoPath);
 	writeFileSync(scriptPath, script);
 	chmodSync(scriptPath, 0o755);
 	writeFileSync(desktopPath, desktop);
@@ -618,7 +642,7 @@ Categories=Network;WebBrowser;
 /** Remove desktop shortcut artifacts created by `server shortcut`. */
 function removeShortcut(name) {
 	if (isWin) {
-		for (const f of [winShortcutPs1Path(name), winPidFilePath(name)]) {
+		for (const f of [winShortcutPs1Path(name), winPidFilePath(name), winIcoPath()]) {
 			if (existsSync(f)) rmSync(f);
 		}
 		spawnSync(
