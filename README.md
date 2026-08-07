@@ -72,22 +72,43 @@ npm i -g .
 > install scripts, approve node-pty's native build once after installing:
 > `npm approve-scripts node-pty@1.1.0` (standard npm does this automatically).
 
+### As a pi package (web UI inside pi)
+
+`pi-web-ui` is also published as a **pi package** (`pi-package` on npm) so it
+can be installed and used from within a pi session:
+
+```bash
+pi install npm:pi-web-ui
+```
+
+Once installed, a `/webui` command becomes available inside pi, launching the
+local web UI against your current working directory:
+
+```
+/webui                      # start + open browser (current dir)
+/webui --port 9000          # start on a specific port
+/webui --no-browser         # start without opening the browser
+/webui stop                 # stop the running instance
+/webui status               # show URL / status
+```
+
+> **Note — `pi install` is NOT a global CLI install.**
+>
+> `pi install npm:pi-web-ui` only loads the package into pi's extension tree
+> (`~/.pi/agent/npm/node_modules/`) and registers its extension for pi sessions.
+> It does **not** put a `pi-web-ui` executable on your shell `PATH`, so you
+> cannot run the `pi-web-ui` terminal command from that install. For the CLI you
+> still need the global npm install above (`npm i -g pi-web-ui`), which is what
+> `which pi-web-ui` resolves to. `pi install` ≠ `npm i -g`: one is for pi
+> extensions, the other for a system-wide command. Both can coexist (the global
+> 0.x CLI for terminal use, the pi package for the `/webui` in-pi entry).
+
 ### Start
 
 ```bash
 pi-web-ui                                            # foreground, http://localhost:8787
 PORT=9000 PI_WEB_CWD=/path/to/project pi-web-ui      # custom port / workspace
 ```
-
-Foreground start automatically opens your default browser at the URL once the
-server is up; pass `--no-browser` to skip that (scripted / headless starts).
-
-> **Always open the UI via `http://localhost`** (or HTTPS). Plain-HTTP access
-> from a LAN IP (e.g. `http://192.168.1.10:8787`) is not a secure context, so
-> the browser can't use the File System Access API for file downloads — and
-> on Windows, Chrome/Edge may then silently block downloads of no-reputation
-> file types (.zip/.exe/…) with no error message. Via localhost, downloads
-> open a native save dialog that always works.
 
 To run it in the background or auto-start on boot, use a system service —
 see [Deploy &amp; auto-start on boot](#deploy--auto-start-on-boot) (systemd /
@@ -160,8 +181,7 @@ pi-web-ui server uninstall             # remove the service entirely
   `schtasks /Create` requires an elevated PowerShell — if `install` fails
   with `ERROR: Access is denied`, rerun it from an admin shell). It runs a
   PowerShell launcher generated at
-  `%APPDATA%\pi-web-ui\pi-web-ui.ps1` via `powershell.exe -WindowStyle
-  Hidden` — no black console window stays open, so there's nothing to
+  `%APPDATA%\pi-web-ui\pi-web-ui.ps1` via `powershell.exe -WindowStyle Hidden` — no black console window stays open, so there's nothing to
   accidentally close/kill. The launcher sets env, cd's to the workspace,
   launches node, appends logs to `%USERPROFILE%\pi-web-ui.log`. The task XML
   is saved next to it; restarts on failure. **Always pass `--cwd`
@@ -323,12 +343,6 @@ docker compose down      # stop and remove the container
 whenever the Docker daemon starts (boot, crashes, reboots). Mount a volume for
 `/app/.pi-web` (sessions persist) and, optionally, your `~/.pi/agent` config
 and a workspace — see the comments in `docker-compose.yml`.
-
-> **Access via `http://localhost:8787`** even with Docker: on the same machine
-> the port mapping makes it a secure context, so file downloads use the native
-> save dialog (see the note in [Start](#start)). Accessing from another device
-> over plain HTTP (`http://<host-ip>:8787`) loses that — use an SSH tunnel
-> (`ssh -L 8787:localhost:8787 host`) for the same benefit.
 
 ### Linux — systemd
 
