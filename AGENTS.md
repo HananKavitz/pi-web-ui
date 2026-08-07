@@ -107,6 +107,8 @@ pi-web-ui/
   浏览器只按快照渲染。重连只需重发 `get_state`。
 - 序列化时**对象引用稳定**：`uiMessageCache` + 消息数组签名比对，消息没变就不重建数组，
   前端 `React.memo` 因此能跳过整条消息——**不要**破坏这个缓存（stable id、引用复用）。
+- `UiState` 携带 `thinkingLevel`（当前生效）和 `availableThinkingLevels`（当前模型实际支持的级别，
+  SDK 会把集合外的请求静默就近钳制——UI 只能启用这些，否则用户点“低/中”看起来“改不了”）。
 
 ### 协议双端手工同步
 

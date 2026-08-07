@@ -1162,6 +1162,9 @@ export class ClientSession {
 				? { id: model.id, name: model.name, provider: model.provider }
 				: null,
 			thinkingLevel: state.thinkingLevel,
+			// Only the levels the current model actually supports — the SDK clamps
+			// anything else, so the UI must not offer (or must disable) the rest.
+			availableThinkingLevels: this.session.getAvailableThinkingLevels(),
 			queue: { steering: conv.queueSteering, followUp: conv.queueFollowUp },
 			errorMessage: state.errorMessage,
 			tools: state.tools.map((t) => t.name),

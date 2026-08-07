@@ -1591,6 +1591,14 @@ body {
 	background: var(--bg-elev);
 	color: var(--text);
 }
+.dd-item:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+.dd-item:disabled:hover {
+	background: transparent;
+	color: var(--text-dim);
+}
 .dd-item.active {
 	background: var(--accent-soft);
 	color: var(--text);

@@ -84,6 +84,8 @@ export interface UiState {
 	isStreaming: boolean;
 	model: UiModelInfo | null;
 	thinkingLevel: string;
+	/** Model-supported thinking levels; UI must only offer these (mirror of protocol.ts). */
+	availableThinkingLevels: string[];
 	queue: { steering: number; followUp: number };
 	errorMessage?: string;
 	tools: string[];

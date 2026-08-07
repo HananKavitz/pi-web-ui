@@ -55,6 +55,7 @@ const zh = {
 	"thinking.high": "高",
 	"thinking.xhigh": "极高",
 	"thinking.max": "最大",
+	thinkingUnsupported: "当前模型不支持该级别，已按模型能力就近生效",
 
 	/* footerbar */
 	context: "上下文",
@@ -352,6 +353,8 @@ const en: Record<keyof typeof zh, string> = {
 	"thinking.high": "High",
 	"thinking.xhigh": "Extra high",
 	"thinking.max": "Max",
+	thinkingUnsupported:
+		"Not supported by this model — snapped to the nearest supported level",
 
 	/* footerbar */
 	context: "Context",

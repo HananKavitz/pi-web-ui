@@ -94,6 +94,13 @@ export interface UiState {
 	isStreaming: boolean;
 	model: UiModelInfo | null;
 	thinkingLevel: string;
+	/**
+	 * Thinking levels the CURRENT model actually supports (SDK clamps any
+	 * request outside this set). The UI must only offer these — selecting an
+	 * unsupported level silently snaps to a nearby one, which reads as "cannot
+	 * change the level". Empty/absent → fall back to the full list.
+	 */
+	availableThinkingLevels: string[];
 	queue: { steering: number; followUp: number };
 	errorMessage?: string;
 	tools: string[];

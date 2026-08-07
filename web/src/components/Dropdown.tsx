@@ -63,10 +63,15 @@ export function Dropdown({
 
 export function DropdownItem({
 	active,
+	disabled = false,
+	title,
 	onClick,
 	children,
 }: {
 	active?: boolean;
+	disabled?: boolean;
+	/** Tooltip shown when the item is disabled (e.g. why a level is off-limits). */
+	title?: string;
 	onClick: () => void;
 	children: ReactNode;
 }) {
@@ -74,6 +79,8 @@ export function DropdownItem({
 		<button
 			type="button"
 			className={`dd-item ${active ? "active" : ""}`}
+			disabled={disabled}
+			title={title}
 			onClick={onClick}
 		>
 			{children}

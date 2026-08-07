@@ -72,8 +72,23 @@ export function TopBar({
 	// Local loading flag for the model dropdown (list arrives via chat.models).
 	const [modelsLoading, setModelsLoading] = useState(false);
 
-	const thinkingLevels: { value: string; label: string }[] =
-		THINKING_VALUES.map((v) => ({ value: v, label: t(`thinking.${v}`) }));
+	// Model-supported thinking levels (snapshot). The SDK clamps any request
+	// outside this set — unsupported levels must be disabled, not silently
+	// snapped (that's what made the level look "impossible to change").
+	// Empty/absent → unknown, keep everything enabled.
+	const supportedThinking =
+		state?.availableThinkingLevels && state.availableThinkingLevels.length > 0
+			? new Set(state.availableThinkingLevels)
+			: null;
+	const thinkingLevels: {
+		value: string;
+		label: string;
+		supported: boolean;
+	}[] = THINKING_VALUES.map((v) => ({
+		value: v,
+		label: t(`thinking.${v}`),
+		supported: supportedThinking ? supportedThinking.has(v) : true,
+	}));
 	const thinkingLabel = (level: string): string =>
 		thinkingLevels.find((l) => l.value === level)?.label ?? level;
 
@@ -214,6 +229,8 @@ export function TopBar({
 						<DropdownItem
 							key={l.value}
 							active={state?.thinkingLevel === l.value}
+							disabled={!l.supported}
+							title={l.supported ? undefined : t("thinkingUnsupported")}
 							onClick={() => {
 								if (state?.thinkingLevel !== l.value) {
 									send({ type: "set_thinking", level: l.value });
