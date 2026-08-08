@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
 	FiEdit2,
 	FiFileText,
+	FiMenu,
 	FiPlay,
 	FiPlus,
 	FiRefreshCw,
@@ -37,14 +38,16 @@ interface Draft {
 const EMPTY_DRAFT: Draft = { name: "", command: "", cwd: "${pwd}" };
 
 /**
- * Built-in terminal — three panes:
- *   left   : user command list (.pi/commands.json) — click a command to run it
- *   middle : the active terminal (one xterm per tab, kept mounted)
- *   right  : terminal tabs (VSCode-style vertical strip)
+ * Built-in terminal — two panes:
+ *   left : user command list (.pi/commands.json) on top + terminal tabs below
+ *          (on mobile this whole column slides in as a drawer)
+ *   right: the active terminal (one xterm per tab, kept mounted)
  */
 export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 	const t = useT();
 	const [activeId, setActiveId] = useState<string | null>(null);
+	// Mobile: the left column (commands + tabs) slides in as a drawer.
+	const [sideOpen, setSideOpen] = useState(false);
 	// Command list editing state.
 	const [isNew, setIsNew] = useState(false);
 	const [editingIdx, setEditingIdx] = useState<number | null>(null);
@@ -75,6 +78,7 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 		const id = crypto.randomUUID();
 		terminal.create({ ...meta, id, running: true, exitCode: null });
 		setActiveId(id);
+		setSideOpen(false);
 	};
 
 	const openShell = () =>
@@ -165,8 +169,10 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 
 	return (
 		<div className="terminal-view">
-			{/* ---------------- left: command list ---------------- */}
-			<aside className="term-side term-commands">
+			{/* ---------------- left: command list + terminal tabs ---------------- */}
+			<aside
+				className={`term-side term-commands ${sideOpen ? "open" : ""}`}
+			>
 				<div className="panel-header">
 					<span className="panel-title">{t("commands")}</span>
 					<div className="panel-header-actions">
@@ -302,10 +308,79 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 					</div>
 					<div className="cmd-file-hint">{t("commandsFileHint")}</div>
 				</div>
+
+				{/* ---------------- tabs (below the command list) ---------------- */}
+				<div className="term-tabs-block">
+					<div className="panel-header">
+						<span className="panel-title">{t("terminal")}</span>
+						<button
+							type="button"
+							className="panel-new"
+							title={t("newTerminal")}
+							onClick={openShell}
+						>
+							<FiPlus />
+						</button>
+					</div>
+					<div className="panel-body">
+						{chat.terminals.length === 0 && (
+							<div className="panel-empty">{t("noTerminal")}</div>
+						)}
+						{chat.terminals.map((tab) => (
+							<div
+								key={tab.id}
+								className={`term-tab ${tab.id === activeId ? "active" : ""}`}
+							>
+								<button
+									type="button"
+									className="term-tab-main"
+									title={`${tab.cwd}${tab.command ? `\n> ${tab.command.command}` : ""}`}
+									onClick={() => {
+										setActiveId(tab.id);
+										setSideOpen(false);
+									}}
+								>
+									<span
+										className={`term-tab-dot ${tab.running ? "run" : "exit"}`}
+									/>
+									<span className="term-tab-title">
+										{tab.title}
+										{!tab.running && (
+											<span className="term-tab-exit">
+												{t("exited", {
+													code: tab.exitCode === null ? "" : ` ${tab.exitCode}`,
+												})}
+											</span>
+										)}
+									</span>
+								</button>
+								<button
+									type="button"
+									className="term-tab-close"
+									title={t("closeTerminal")}
+									onClick={() => closeTab(tab.id)}
+								>
+									<FiX />
+								</button>
+							</div>
+						))}
+					</div>
+				</div>
 			</aside>
 
-			{/* ---------------- middle: terminals ---------------- */}
+			{/* ---------------- right: terminals ---------------- */}
 			<div className="term-main">
+				{sideOpen && (
+					<div className="drawer-backdrop" onClick={() => setSideOpen(false)} />
+				)}
+				<button
+					type="button"
+					className="term-side-toggle"
+					title={t("commands")}
+					onClick={() => setSideOpen((v) => !v)}
+				>
+					<FiMenu />
+				</button>
 				{chat.terminals.length === 0 ? (
 					<div className="term-empty">
 						<FiTerminal className="term-empty-icon" />
@@ -326,61 +401,6 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 					))
 				)}
 			</div>
-
-			{/* ---------------- right: terminal tabs ---------------- */}
-			<aside className="term-side term-tabs">
-				<div className="panel-header">
-					<span className="panel-title">{t("terminal")}</span>
-					<button
-						type="button"
-						className="panel-new"
-						title={t("newTerminal")}
-						onClick={openShell}
-					>
-						<FiPlus />
-					</button>
-				</div>
-				<div className="panel-body">
-					{chat.terminals.length === 0 && (
-						<div className="panel-empty">{t("noTerminal")}</div>
-					)}
-					{chat.terminals.map((tab) => (
-						<div
-							key={tab.id}
-							className={`term-tab ${tab.id === activeId ? "active" : ""}`}
-						>
-							<button
-								type="button"
-								className="term-tab-main"
-								title={`${tab.cwd}${tab.command ? `\n> ${tab.command.command}` : ""}`}
-								onClick={() => setActiveId(tab.id)}
-							>
-								<span
-									className={`term-tab-dot ${tab.running ? "run" : "exit"}`}
-								/>
-								<span className="term-tab-title">
-									{tab.title}
-									{!tab.running && (
-										<span className="term-tab-exit">
-											{t("exited", {
-												code: tab.exitCode === null ? "" : ` ${tab.exitCode}`,
-											})}
-										</span>
-									)}
-								</span>
-							</button>
-							<button
-								type="button"
-								className="term-tab-close"
-								title={t("closeTerminal")}
-								onClick={() => closeTab(tab.id)}
-							>
-								<FiX />
-							</button>
-						</div>
-					))}
-				</div>
-			</aside>
 		</div>
 	);
 }

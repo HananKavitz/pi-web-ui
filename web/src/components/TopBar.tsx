@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import {
 	FiCpu,
 	FiDownload,
+	FiFolder,
 	FiGithub,
 	FiGlobe,
+	FiMenu,
 	FiMessageSquare,
 	FiPlus,
 	FiTerminal,
@@ -30,6 +32,8 @@ interface TopBarProps {
 	) => boolean;
 	view: "chat" | "terminal";
 	onViewChange: (view: "chat" | "terminal") => void;
+	/** Open a side panel as a mobile drawer ("left" = history, "right" = files). */
+	onOpenPanel: (side: "left" | "right") => void;
 	/** Open the custom model config panel. */
 	onManageModels: () => void;
 	/** Sound notification settings + change handler (owned by App). */
@@ -53,6 +57,7 @@ export function TopBar({
 	send,
 	view,
 	onViewChange,
+	onOpenPanel,
 	onManageModels,
 	sound,
 	onSoundChange,
@@ -119,6 +124,14 @@ export function TopBar({
 	return (
 		<header className="topbar">
 			<div className="brand">
+				<button
+					type="button"
+					className="panel-toggle"
+					title={t("openHistory")}
+					onClick={() => onOpenPanel("left")}
+				>
+					<FiMenu />
+				</button>
 				<span className="brand-logo">π</span>
 				<span className="brand-name">pi-web-ui</span>
 				<span className={`conn-dot ${connClass}`} title={connLabel} />
@@ -421,6 +434,15 @@ export function TopBar({
 				>
 					<FiGithub />
 				</a>
+
+				<button
+					type="button"
+					className="panel-toggle"
+					title={t("openFiles")}
+					onClick={() => onOpenPanel("right")}
+				>
+					<FiFolder />
+				</button>
 			</div>
 		</header>
 	);

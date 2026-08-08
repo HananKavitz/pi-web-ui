@@ -6,7 +6,6 @@ import {
 	FiFolder,
 	FiLink,
 	FiPlus,
-	FiRefreshCw,
 } from "react-icons/fi";
 import type { ChatState } from "../use-chat";
 import { useT } from "../i18n";
@@ -236,14 +235,6 @@ export function RightPanel({
 						))}
 				</div>
 			)}
-			<button
-				type="button"
-				className="panel-fab"
-				title={t("refreshFiles")}
-				onClick={() => request(currentPath, { silent: true })}
-			>
-				<FiRefreshCw />
-			</button>
 		</aside>
 	);
 }

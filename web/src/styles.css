@@ -786,14 +786,6 @@ body {
 	font-size: 14px;
 }
 
-.inputbox-actions .btn.attach-img {
-	padding: 7px 10px;
-}
-.inputbox-actions .btn.attach-img svg {
-	width: 16px;
-	height: 16px;
-}
-
 .attach-range {
 	font-family: var(--mono);
 	font-size: 10.5px;
@@ -938,6 +930,30 @@ body {
 	display: none;
 }
 
+/* Mobile panel drawers: transparent wrappers on desktop, so the classic
+   3-column layout is untouched. Toggled fixed drawers kick in ≤768px. */
+.panel-drawer {
+	display: contents;
+}
+.panel-toggle {
+	display: none;
+}
+.drawer-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 55;
+	background: rgba(0, 0, 0, 0.5);
+	animation: drawer-fade 0.2s ease;
+}
+@keyframes drawer-fade {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
 .view-switch {
 	display: inline-flex;
 	align-items: center;
@@ -992,9 +1008,24 @@ body {
 .term-commands {
 	border-right: 1px solid var(--border);
 }
-.term-tabs {
-	width: 200px;
-	border-left: 1px solid var(--border);
+
+/* Tabs live under the command list in the same left column — the two
+   bodies split the column 50/50. */
+.term-tabs-block {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	flex: 1 1 0;
+	border-top: 1px solid var(--border);
+}
+.term-tabs-block .panel-body {
+	flex: 1;
+	min-height: 0;
+}
+
+/* Mobile drawer toggle for the left column (hidden on desktop). */
+.term-side-toggle {
+	display: none;
 }
 
 .term-main {
@@ -2700,15 +2731,13 @@ body {
 
 .inputbar {
 	flex-shrink: 0;
-	padding: 10px 20px 12px;
-	border-top: 1px solid var(--border);
-	background: var(--bg-elev);
+	padding: 12px 20px 14px;
 	position: relative;
 }
 
 .queue-hint {
 	max-width: 860px;
-	margin: 0 auto 6px;
+	margin: 0 auto 8px;
 	display: flex;
 	gap: 14px;
 	font-size: 12px;
@@ -2720,15 +2749,24 @@ body {
 	margin: 0 auto;
 	display: flex;
 	align-items: flex-end;
-	gap: 8px;
+	gap: 10px;
 	background: var(--bg-elev2);
 	border: 1px solid var(--border);
-	border-radius: 12px;
-	padding: 8px 8px 8px 14px;
-	transition: border-color 0.15s;
+	border-radius: 16px;
+	padding: 10px 10px 10px 10px;
+	transition:
+		border-color 0.2s ease,
+		box-shadow 0.2s ease;
+	box-shadow:
+		inset 0 1px 0 rgba(255, 255, 255, 0.04),
+		0 4px 18px rgba(0, 0, 0, 0.28);
 }
 .inputbox:focus-within {
-	border-color: var(--accent);
+	border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+	box-shadow:
+		inset 0 1px 0 rgba(255, 255, 255, 0.04),
+		0 0 0 3px var(--accent-soft),
+		0 6px 22px rgba(0, 0, 0, 0.32);
 }
 
 .inputbox textarea {
@@ -2739,10 +2777,12 @@ body {
 	background: transparent;
 	color: var(--text);
 	font-family: var(--sans);
-	font-size: 14px;
-	line-height: 1.55;
+	font-size: 14.5px;
+	line-height: 1.6;
 	max-height: 220px;
-	padding: 4px 0;
+	padding: 6px 2px;
+	caret-color: var(--accent);
+	overflow: hidden; /* JS switches to auto only when capped at 220px */
 }
 .inputbox textarea::placeholder {
 	color: var(--text-faint);
@@ -2754,10 +2794,12 @@ body {
 .inputbox-actions {
 	display: flex;
 	align-items: center;
-	gap: 6px;
+	gap: 8px;
 	flex-shrink: 0;
+	padding-bottom: 2px;
 }
 
+/* Base button — shared by dialogs / modals / preview. */
 .btn {
 	display: inline-flex;
 	align-items: center;
@@ -2774,33 +2816,87 @@ body {
 	opacity: 0.4;
 	cursor: default;
 }
-.btn.send {
-	background: var(--accent);
-	border-color: var(--accent);
-	color: #fff;
+
+/* Icon action buttons inside the input box (paperclip / send / stop). */
+.inputbox .btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 38px;
+	height: 38px;
+	padding: 0;
+	border: 1px solid var(--border);
+	border-radius: 50%;
+	background: transparent;
+	color: var(--text-dim);
+	cursor: pointer;
+	transition:
+		background 0.18s,
+		color 0.18s,
+		border-color 0.18s,
+		transform 0.18s,
+		box-shadow 0.18s,
+		filter 0.18s;
+	flex-shrink: 0;
 }
-.btn.send:hover:not(:disabled) {
-	filter: brightness(1.12);
+.inputbox .btn svg {
+	width: 17px;
+	height: 17px;
+}
+.inputbox .btn:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+/* Paperclip: quiet until hovered. */
+.inputbox .btn.attach-img {
+	border: none;
+	color: var(--text-faint);
+}
+.inputbox .btn.attach-img:hover:not(:disabled) {
+	background: var(--accent-soft);
+	color: var(--accent);
+}
+
+/* Send: solid blue circle with a white up-arrow. */
+.inputbox .btn.send {
+	background: #3b82f6;
+	border-color: #3b82f6;
+	color: #fff;
+	box-shadow: 0 2px 10px rgba(59, 130, 246, 0.35);
+}
+.inputbox .btn.send:hover:not(:disabled) {
+	background: #2563eb;
+	border-color: #2563eb;
+	transform: translateY(-1px);
+	box-shadow: 0 4px 16px rgba(59, 130, 246, 0.45);
+}
+
+/* Stop: soft red circle. */
+.inputbox .btn.stop {
+	background: var(--red-soft);
+	border-color: rgba(248, 113, 113, 0.35);
+	color: #fca5a5;
+}
+.inputbox .btn.stop:hover:not(:disabled) {
+	background: rgba(248, 113, 113, 0.22);
+	transform: translateY(-1px);
 }
 
 /* 补充: queue a message that sends the moment the current reply finishes. */
-.btn.supplement {
-	background: transparent;
-	border-color: rgba(139, 92, 246, 0.5);
+.inputbox .btn.supplement {
+	width: auto;
+	border-radius: 999px;
+	padding: 0 16px;
+	gap: 5px;
+	font-size: 13px;
+	border-color: rgba(139, 92, 246, 0.45);
 	color: var(--accent);
 }
-.btn.supplement:hover:not(:disabled) {
+.inputbox .btn.supplement:hover:not(:disabled) {
 	background: var(--accent);
 	border-color: var(--accent);
 	color: #fff;
-}
-.btn.stop {
-	background: var(--red-soft);
-	border-color: rgba(248, 113, 113, 0.4);
-	color: #fca5a5;
-}
-.btn.stop:hover {
-	background: rgba(248, 113, 113, 0.22);
 }
 
 /* ------------------------------------------------------------------ scroll */
@@ -3663,4 +3759,210 @@ body {
 	display: inline-flex;
 	align-items: center;
 	gap: 5px;
+}
+
+/* ================================================================ mobile (≤768px) */
+
+@media (max-width: 768px) {
+	/* ---- topbar: icon-only chips, wrap instead of scroll (a scroll
+	       container would clip the absolutely-positioned dropdown menus) ---- */
+	.topbar {
+		padding: 8px 10px;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+	.brand-name,
+	.conn-label {
+		display: none;
+	}
+	.chip > span:not(.update-dot) {
+		display: none;
+	}
+	.topbar-actions {
+		gap: 6px;
+		flex-wrap: wrap;
+		row-gap: 6px;
+	}
+
+	/* Dropdown menus become bottom sheets: fixed positioning so no ancestor
+	   overflow can clip them, and they can't overflow the viewport sideways. */
+	.dropdown .dd-menu {
+		position: fixed;
+		left: 12px;
+		right: 12px;
+		top: auto;
+		bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+		max-width: none;
+		max-height: 55vh;
+		z-index: 90;
+	}
+	.dropdown.left .dd-menu {
+		left: 12px;
+		right: 12px;
+	}
+
+	/* Sound settings panel fills the bottom-sheet width. */
+	.sound-menu {
+		width: 100%;
+	}
+	.chip {
+		padding: 6px 9px;
+	}
+	.view-switch button {
+		padding: 5px 10px;
+	}
+
+	/* panel drawer toggle buttons (top-left / top-right) */
+	.panel-toggle {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 34px;
+		height: 34px;
+		border: 1px solid var(--border);
+		border-radius: 9px;
+		background: var(--bg-elev2);
+		color: var(--text-dim);
+		font-size: 15px;
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+	.panel-toggle:active {
+		background: var(--accent-soft);
+		color: var(--accent);
+	}
+
+	/* ---- side panels become sliding drawers ---- */
+	.panel-drawer {
+		display: block;
+		position: fixed;
+		top: 0;
+		bottom: 0;
+		z-index: 60;
+		width: min(300px, 86vw);
+		background: var(--bg-elev);
+		transition: transform 0.25s ease;
+	}
+	.panel-drawer.drawer-left {
+		left: 0;
+		border-right: 1px solid var(--border);
+		box-shadow: 8px 0 30px rgba(0, 0, 0, 0.35);
+		transform: translateX(-105%);
+	}
+	.panel-drawer.drawer-right {
+		right: 0;
+		border-left: 1px solid var(--border);
+		box-shadow: -8px 0 30px rgba(0, 0, 0, 0.35);
+		transform: translateX(105%);
+	}
+	.panel-drawer.open {
+		transform: translateX(0);
+	}
+	.panel-drawer .panel {
+		width: 100%;
+		height: 100%;
+		border: none;
+	}
+
+	/* ---- terminal: the left column (commands + tabs) becomes a drawer ---- */
+	.term-main {
+		position: relative;
+	}
+	.term-commands {
+		position: fixed;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		z-index: 60;
+		width: min(300px, 86vw);
+		transform: translateX(-105%);
+		transition: transform 0.25s ease;
+		box-shadow: 8px 0 30px rgba(0, 0, 0, 0.35);
+		border-right: 1px solid var(--border);
+	}
+	.term-commands.open {
+		transform: translateX(0);
+	}
+	.term-side-toggle {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		position: absolute;
+		top: 10px;
+		left: 10px;
+		z-index: 20;
+		width: 36px;
+		height: 36px;
+		border: 1px solid var(--border);
+		border-radius: 9px;
+		background: var(--bg-elev2);
+		color: var(--text-dim);
+		font-size: 15px;
+		cursor: pointer;
+	}
+	.term-side-toggle:active {
+		background: var(--accent-soft);
+		color: var(--accent);
+	}
+	/* Make room for the floating toggle so it doesn't cover the prompt. */
+	.term-xterm {
+		padding: 54px 8px 8px;
+	}
+
+	/* ---- chat ---- */
+	.msg {
+		padding: 6px 14px 12px;
+	}
+	.inputbar {
+		padding: 10px 10px 12px;
+	}
+	.inputbox {
+		padding: 8px 8px 8px 10px;
+		gap: 6px;
+	}
+	.inputbox textarea {
+		font-size: 16px; /* avoid iOS auto-zoom on focus */
+	}
+	.inputbox .btn {
+		width: 40px;
+		height: 40px;
+	}
+	.attach-chip {
+		max-width: 78vw;
+	}
+
+	/* ---- overlays: near-fullscreen bottom sheets ---- */
+	.modal-backdrop,
+	.dialog-overlay,
+	.fp-overlay {
+		padding: 10px;
+		align-items: flex-end;
+	}
+	.modal,
+	.dialog,
+	.fp {
+		width: 100%;
+		max-width: 100%;
+		max-height: 94vh;
+		border-radius: 14px;
+	}
+	.fp {
+		height: 92vh;
+	}
+
+	/* ---- footer: keep the cwd path input — wrap instead of hiding ---- */
+	.statusbar {
+		flex-wrap: wrap;
+		row-gap: 4px;
+		padding: 6px 10px;
+		font-size: 10.5px;
+	}
+	.status-cwd-wrap {
+		width: 100%;
+		max-width: 100%;
+		margin-left: 0;
+	}
+	.status-cwd-input {
+		font-size: 12px; /* avoid iOS auto-zoom on focus */
+	}
 }

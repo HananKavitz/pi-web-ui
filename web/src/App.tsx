@@ -11,6 +11,7 @@ import { PiSetupModal } from "./components/PiSetupModal";
 import { ModelConfigModal } from "./components/ModelConfigModal";
 import { FilePreview, type PreviewFile } from "./components/FilePreview";
 import { useChat } from "./use-chat";
+import type { ClientMessage } from "./types";
 import { useT } from "./i18n";
 import { fileToProcessedImage, isRasterImage, type ProcessedImage } from "./image-paste";
 import {
@@ -45,6 +46,8 @@ export function App() {
 	const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
 	const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
 	const [view, setView] = useState<"chat" | "terminal">("chat");
+	// Mobile: which side panel is open as a drawer (null = both closed).
+	const [drawer, setDrawer] = useState<"left" | "right" | null>(null);
 	// Setup modal: one-time prompt when the pi agent config is missing.
 	const [setupDismissed, setSetupDismissed] = useState(false);
 	// Custom model config panel (model dropdown → 管理模型).
@@ -112,6 +115,17 @@ export function App() {
 		setAttachments((prev) =>
 			prev.filter((a) => (a.key ? a.key !== pathOrKey : a.path !== pathOrKey)),
 		);
+
+	// Side panels live in mobile drawers — any action inside them (session
+	// switch, cwd change, file list…) should close the drawer. Stable wrapper
+	// so RightPanel's polling effect doesn't churn (send is stable).
+	const panelSend = useCallback(
+		(msg: ClientMessage) => {
+			setDrawer(null);
+			return send(msg);
+		},
+		[send],
+	);
 
 	// -- pasted / dropped / uploaded images (no workspace path) ---------------
 	const pasteImageId = useRef(0);
@@ -224,7 +238,11 @@ export function App() {
 				chat={chat}
 				send={send}
 				view={view}
-				onViewChange={setView}
+				onViewChange={(v) => {
+					setView(v);
+					setDrawer(null);
+				}}
+				onOpenPanel={setDrawer}
 				onManageModels={() => setManageModelsOpen(true)}
 				sound={sound}
 				onSoundChange={setSound}
@@ -243,8 +261,15 @@ export function App() {
 				))}
 			</div>
 			<div className="layout">
+				{drawer && (
+					<div className="drawer-backdrop" onClick={() => setDrawer(null)} />
+				)}
 				<div className={`view-pane ${view === "chat" ? "" : "hidden"}`}>
-					<LeftPanel chat={chat} send={send} />
+					<div
+						className={`panel-drawer drawer-left ${drawer === "left" ? "open" : ""}`}
+					>
+						<LeftPanel chat={chat} send={panelSend} />
+					</div>
 					<main className="main">
 						{chat.state ? (
 							<MessageList
@@ -269,13 +294,23 @@ export function App() {
 							onSent={() => setAttachments([])}
 						/>
 					</main>
-					<RightPanel
-						chat={chat}
-						send={send}
-						onAttach={attach}
-						onPreview={(path, name) => setPreviewFile({ path, name })}
-						onNotice={(level, text) => pushNotice(level, text)}
-					/>
+					<div
+						className={`panel-drawer drawer-right ${drawer === "right" ? "open" : ""}`}
+					>
+						<RightPanel
+							chat={chat}
+							send={panelSend}
+							onAttach={(path, name, mode, isDir) => {
+								setDrawer(null);
+								attach(path, name, mode, isDir);
+							}}
+							onPreview={(path, name) => {
+								setDrawer(null);
+								setPreviewFile({ path, name });
+							}}
+							onNotice={(level, text) => pushNotice(level, text)}
+						/>
+					</div>
 				</div>
 				<div className={`view-pane ${view === "terminal" ? "" : "hidden"}`}>
 					<TerminalPanel chat={chat} send={send} terminal={terminal} />

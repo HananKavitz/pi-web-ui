@@ -1,4 +1,4 @@
-import { FiFolder, FiMessageSquare, FiRefreshCw } from "react-icons/fi";
+import { FiFolder, FiMessageSquare } from "react-icons/fi";
 import type { SessionSummary } from "../types";
 import type { ChatState } from "../use-chat";
 import { useT } from "../i18n";
@@ -144,17 +144,6 @@ export function LeftPanel({ chat, send }: LeftPanelProps) {
 					})}
 				</div>
 			</div>
-			<button
-				type="button"
-				className="panel-fab"
-				title={t("refreshList")}
-				onClick={() => {
-					send({ type: "list_sessions" });
-					send({ type: "list_projects" });
-				}}
-			>
-				<FiRefreshCw />
-			</button>
 		</aside>
 	);
 }

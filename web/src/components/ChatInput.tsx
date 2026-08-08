@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FiSend, FiSquare, FiPaperclip } from "react-icons/fi";
+import { FiSend, FiSquare, FiPaperclip, FiArrowUp } from "react-icons/fi";
 import type { ChatState } from "../use-chat";
 import type { ClientMessage } from "../types";
 import { useT } from "../i18n";
@@ -94,12 +94,14 @@ export function ChatInput({
 		return () => window.removeEventListener("pi-web:fill", onFill);
 	}, []);
 
-	// Auto-grow the textarea.
+	// Auto-grow the textarea; no scrollbar until it hits the height cap.
 	useEffect(() => {
 		const ta = taRef.current;
 		if (!ta) return;
-		ta.style.height = "0px";
+		ta.style.height = "auto"; // natural height first, then clamp
+		const capped = ta.scrollHeight > 220;
 		ta.style.height = `${Math.min(ta.scrollHeight, 220)}px`;
+		ta.style.overflowY = capped ? "auto" : "hidden";
 	}, [text]);
 
 	const submit = () => {
@@ -240,6 +242,25 @@ export function ChatInput({
 				</div>
 			)}
 			<div className="inputbox">
+				<input
+					ref={fileInputRef}
+					type="file"
+					multiple
+					hidden
+					onChange={(e) => {
+						handleFiles(e.target.files);
+						e.target.value = ""; // allow re-picking the same file
+					}}
+				/>
+				<button
+					type="button"
+					className="btn attach-img"
+					title={t("uploadFile")}
+					disabled={!connected}
+					onClick={() => fileInputRef.current?.click()}
+				>
+					<FiPaperclip />
+				</button>
 				<textarea
 					ref={taRef}
 					value={text}
@@ -257,25 +278,6 @@ export function ChatInput({
 					onPaste={onPaste}
 				/>
 				<div className="inputbox-actions">
-					<input
-						ref={fileInputRef}
-						type="file"
-						multiple
-						hidden
-						onChange={(e) => {
-							handleFiles(e.target.files);
-							e.target.value = ""; // allow re-picking the same file
-						}}
-					/>
-					<button
-						type="button"
-						className="btn attach-img"
-						title={t("uploadFile")}
-						disabled={!connected}
-						onClick={() => fileInputRef.current?.click()}
-					>
-						<FiPaperclip />
-					</button>
 					{streaming ? (
 						<>
 							{text.trim() !== "" && (
@@ -309,7 +311,7 @@ export function ChatInput({
 							}
 							onClick={submit}
 						>
-							<FiSend />
+							<FiArrowUp />
 						</button>
 					)}
 				</div>

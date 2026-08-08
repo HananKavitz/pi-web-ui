@@ -102,12 +102,12 @@ const zh = {
 	recentProjects: "最近项目",
 	runningConversations: "运行的对话",
 	historySessions: "历史对话",
-	streaming: "进行中…",
+	openHistory: "历史对话",
+	openFiles: "文件列表",	streaming: "进行中…",
 	noHistory: "还没有历史对话",
 	current: "当前",
 	messageCount: "{n} 条消息",
 	tuiTip: "pi 终端（TUI）中的对话",
-	refreshList: "刷新列表",
 	emptyChat: "空对话",
 
 	/* message edit */
@@ -143,7 +143,6 @@ const zh = {
 	restartHint: "重启：pi-web-ui server restart",
 
 	/* right panel */
-	refreshFiles: "刷新文件列表",
 	rootDir: "根目录",
 	noFiles: "暂无文件",
 	filesTruncated: "目录过大，列表已截断，仅显示前 2000 项",
@@ -412,12 +411,12 @@ const en: Record<keyof typeof zh, string> = {
 	recentProjects: "Recent projects",
 	runningConversations: "Running chats",
 	historySessions: "History",
-	streaming: "Streaming…",
+	openHistory: "History",
+	openFiles: "Files",	streaming: "Streaming…",
 	noHistory: "No previous chats",
 	current: "Current",
 	messageCount: "{n} messages",
 	tuiTip: "Chat in the pi terminal (TUI)",
-	refreshList: "Refresh list",
 	emptyChat: "Empty chat",
 
 	/* message edit */
@@ -453,7 +452,6 @@ const en: Record<keyof typeof zh, string> = {
 	restartHint: "Restart: pi-web-ui server restart",
 
 	/* right panel */
-	refreshFiles: "Refresh file list",
 	rootDir: "Root",
 	noFiles: "No files",
 	filesTruncated: "Directory too large — list truncated (first 2000 shown)",
