@@ -1,8 +1,9 @@
 /**
  * AgentService — wraps the pi SDK (@earendil-works/pi-coding-agent) for the web
  * frontend. Each browser client (identified by a persistent clientId) gets its
- * own AgentSessionRuntime with a private session directory, so multiple users /
- * tabs never share a transcript file.
+ * own AgentSessionRuntime, but sessions live in the SDK default per-project
+ * directory (<agentDir>/sessions/--<cwd>--/) — the same transcript files the
+ * pi CLI/TUI use — so every conversation of a folder shows up everywhere.
  *
  * Streaming model: the SDK emits AgentSessionEvents; we forward lightweight
  * `tool_delta` messages for live tool output and schedule throttled full-state
@@ -542,10 +543,6 @@ export class WebUIContext {
 	}
 }
 
-/** Sanitize a clientId (UUID) for use as a directory name. */
-function sanitizeId(id: string): string {
-	return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "anon";
-}
 
 const IS_WIN32 = process.platform === "win32";
 
@@ -851,9 +848,6 @@ function conversationTitle(session: AgentSession): string {
 export class ClientSession {
 	readonly clientId: string;
 	cwd: string;
-	/** Absolute per-client session directory.
-	/** Absolute per-client session directory. */
-	readonly sessionDir: string;
 	/** pi config dir (auth/models/skills). */
 	private readonly agentDir: string;
 	/** Persisted per-client UI state (last workspace + recent projects). */
@@ -911,13 +905,11 @@ export class ClientSession {
 	private constructor(
 		clientId: string,
 		cwd: string,
-		sessionDir: string,
 		agentDir: string,
 		stateStore: ClientStateStore,
 	) {
 		this.clientId = clientId;
 		this.cwd = cwd;
-		this.sessionDir = sessionDir;
 		this.agentDir = agentDir;
 		this.stateStore = stateStore;
 	}
@@ -925,24 +917,18 @@ export class ClientSession {
 	static async create(
 		clientId: string,
 		cwd: string,
-		sessionDir: string,
 		stateStore: ClientStateStore,
 	): Promise<ClientSession> {
 		const agentDir = process.env.PI_CODING_AGENT_DIR ?? getAgentDir();
 
-		const cs = new ClientSession(
-			clientId,
-			cwd,
-			sessionDir,
-			agentDir,
-			stateStore,
-		);
+		const cs = new ClientSession(clientId, cwd, agentDir, stateStore);
 		const runtime = await createAgentSessionRuntime(cs.makeRuntimeFactory(), {
 			cwd,
 			agentDir,
-			// Resume the most recent session for this client's private session dir,
-			// or start a fresh one on first visit.
-			sessionManager: SessionManager.continueRecent(cwd, sessionDir),
+			// Resume the most recent session for this project — the SDK default
+			// per-project dir (<agentDir>/sessions/--<cwd>--/, shared with the
+			// pi CLI/TUI) — or start a fresh one on first visit.
+			sessionManager: SessionManager.continueRecent(cwd),
 		});
 		// First conversation = the resumed session; it also seeds the shared
 		// ModelRuntime that every later conversation reuses.
@@ -2444,7 +2430,7 @@ export class ClientSession {
 				{
 					cwd: this.cwd,
 					agentDir: this.agentDir,
-					sessionManager: SessionManager.create(this.cwd, this.sessionDir),
+					sessionManager: SessionManager.create(this.cwd),
 				},
 			);
 			const conv = this.makeConversation(runtime);
@@ -2549,25 +2535,13 @@ export class ClientSession {
 
 	private async pushSessions(): Promise<void> {
 		try {
-			const { resolve } = await import("node:path");
-			// The pi CLI/TUI keeps sessions in <agentDir>/sessions/--<cwd-sanitized>--
-			// (encoded per working directory). List those too, so the conversation
-			// panel shows every conversation of the current folder — not just the
-			// ones created in this web UI.
-			const safePath = `--${resolve(this.cwd)
-				.replace(/^[/\\]/, "")
-				.replace(/[/\\:]/g, "-")}--`;
-			const tuiSessionDir = join(this.agentDir, "sessions", safePath);
-
-			const [webInfos, tuiInfos] = await Promise.all([
-				SessionManager.list(this.cwd, this.sessionDir),
-				existsSync(tuiSessionDir)
-					? SessionManager.list(this.cwd, tuiSessionDir).catch(() => [])
-					: Promise.resolve([]),
-			]);
+			// Sessions live in the SDK default per-project dir
+			// (<agentDir>/sessions/--<cwd>--/), the same files the pi CLI/TUI
+			// use — one listing covers every conversation of the current folder.
+			const infos = await SessionManager.list(this.cwd);
 
 			const sessions = new Map<string, SessionSummary>();
-			for (const s of webInfos) {
+			for (const s of infos) {
 				sessions.set(s.path, {
 					path: s.path,
 					name: s.name,
@@ -2575,16 +2549,6 @@ export class ClientSession {
 					messageCount: s.messageCount,
 					modified: s.modified.getTime(),
 					source: "web",
-				});
-			}
-			for (const s of tuiInfos) {
-				sessions.set(s.path, {
-					path: s.path,
-					name: s.name,
-					firstMessage: s.firstMessage,
-					messageCount: s.messageCount,
-					modified: s.modified.getTime(),
-					source: "tui",
 				});
 			}
 			const sorted = [...sessions.values()].sort(
@@ -2709,7 +2673,7 @@ export class ClientSession {
 			const saved = this.stateStore.get(this.clientId);
 			const map = new Map<string, number>();
 			for (const p of saved.projects) map.set(p.path, p.lastUsed);
-			const all = await SessionManager.listAll(this.sessionDir);
+			const all = await SessionManager.listAll();
 			for (const s of all) {
 				if (s.cwd) {
 					const t = s.modified.getTime();
@@ -3006,7 +2970,7 @@ export class ClientSession {
 					{
 						cwd: abs,
 						agentDir: this.agentDir,
-						sessionManager: SessionManager.continueRecent(abs, this.sessionDir),
+						sessionManager: SessionManager.continueRecent(abs),
 					},
 				);
 				const conv = this.makeConversation(newRuntime);
@@ -3181,7 +3145,6 @@ export class AgentService {
 
 	constructor(
 		private cwd: string,
-		private sessionDirRoot: string,
 		stateFile: string,
 	) {
 		this.stateStore = new ClientStateStore(stateFile);
@@ -3209,10 +3172,10 @@ export class AgentService {
 						// gone (unmounted drive / deleted) — fall back to the default
 					}
 				}
+				// Sessions use the SDK default per-project dir — no per-client dir.
 				const creating = ClientSession.create(
 					clientId,
 					cwd,
-					join(this.sessionDirRoot, sanitizeId(clientId)),
 					this.stateStore,
 				).finally(() => {
 					this.pending.delete(clientId);

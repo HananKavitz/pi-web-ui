@@ -9,7 +9,11 @@
  * Env:
  *   PORT            HTTP port (default 8787)
  *   PI_WEB_CWD      workspace the agent operates in (default: process.cwd())
- *   PI_WEB_DATA_DIR where per-client session dirs are stored (default: <cwd>/.pi-web)
+ *   PI_WEB_DATA_DIR where per-client UI state is stored (client-state.json,
+ *   default: <home>/.pi-web). Chat sessions are NOT stored here — they live
+ *   in the pi agent's global TUI session dir (~/.pi/agent/sessions/--<cwd>--/)
+ *   via the SDK default, so this web UI, the dev instance, and the pi CLI/TUI
+ *   all share one conversation list per project.
  *   PI_CODING_AGENT_DIR  pi config dir (auth/models/skills) — passed to the SDK
  */
 import { existsSync } from "node:fs";
@@ -18,18 +22,22 @@ import { createServer } from "node:http";
 import { createConnection } from "node:net";
 import { spawn } from "node:child_process";
 import { basename, dirname, join, resolve } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import express from "express";
 import { WebSocket, WebSocketServer } from "ws";
-import { VERSION } from "@earendil-works/pi-coding-agent";
+import { VERSION, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { AgentService, previewKind, workspacePath } from "./agent-service.js";
 import type { ClientMessage, ServerMessage } from "./protocol.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const CWD = resolve(process.env.PI_WEB_CWD ?? process.cwd());
-const DATA_DIR = resolve(process.env.PI_WEB_DATA_DIR ?? join(CWD, ".pi-web"));
-const SESSION_DIR_ROOT = join(DATA_DIR, "sessions");
+const DATA_DIR = resolve(process.env.PI_WEB_DATA_DIR ?? join(homedir(), ".pi-web"));
+// Root of the SDK default per-project session dirs — chat transcripts live in
+// <SESSION_DIR_ROOT>/--<cwd>--/, shared with the pi CLI/TUI (getAgentDir
+// honors PI_CODING_AGENT_DIR).
+const SESSION_DIR_ROOT = join(getAgentDir(), "sessions");
 
 const app = express();
 app.use(express.json({ limit: "10mb" }));
@@ -137,7 +145,6 @@ const heartbeatTimer = setInterval(() => {
 
 const service = new AgentService(
 	CWD,
-	SESSION_DIR_ROOT,
 	// Per-client persisted UI state: last-used workspace + recent projects.
 	join(DATA_DIR, "client-state.json"),
 );

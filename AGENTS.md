@@ -292,7 +292,7 @@ curl -s https://registry.npmjs.org/pi-web-ui/latest | jq .version
 | --- | --- | --- |
 | `PORT` | `8787` | HTTP 端口 |
 | `PI_WEB_CWD` | `process.cwd()` | 智能体工作区（读/写/终端都以此为根） |
-| `PI_WEB_DATA_DIR` | `<cwd>/.pi-web` | 每客户端会话目录（`.pi-web/sessions/<clientId>/`） |
+| `PI_WEB_DATA_DIR` | `~/.pi-web` | 每客户端持久化 UI 状态（client-state.json，最近项目/工作目录）；对话会话放 SDK 默认目录 `<agentDir>/sessions/--<cwd>--/`（与 pi CLI/TUI 共享同一对话列表） |
 | `PI_WEB_INLINE_FILE_MAX` | `12288` (12KB) | inline 附件的内联阈值，超过自动降级为路径引用 |
 | `PI_CODING_AGENT_DIR` | `~/.pi/agent` | pi 配置目录（auth.json / models.json / skills） |
 
