@@ -1560,6 +1560,20 @@ body {
 .chip.newchat:hover {
 	background: var(--accent-soft);
 }
+/* GitHub repo link (top-right corner). */
+.chip.github {
+	padding: 5px 8px;
+	text-decoration: none;
+	color: var(--text-dim);
+}
+.chip.github:hover {
+	color: var(--text);
+	border-color: var(--accent);
+}
+.chip.github svg {
+	width: 16px;
+	height: 16px;
+}
 
 /* ------------------------------------------------------------------ dropdown */
 

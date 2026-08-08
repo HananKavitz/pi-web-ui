@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
 	FiCpu,
 	FiDownload,
+	FiGithub,
 	FiGlobe,
 	FiMessageSquare,
 	FiPlus,
@@ -410,6 +411,16 @@ export function TopBar({
 							)}
 					</div>
 				</Dropdown>
+
+				<a
+					className="chip github"
+					href="https://github.com/xing-shuyin/pi-web-ui"
+					target="_blank"
+					rel="noreferrer noopener"
+					title={t("githubRepo")}
+				>
+					<FiGithub />
+				</a>
 			</div>
 		</header>
 	);
