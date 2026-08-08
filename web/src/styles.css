@@ -1560,9 +1560,13 @@ body {
 .chip.newchat:hover {
 	background: var(--accent-soft);
 }
-/* GitHub repo link (top-right corner). */
+/* GitHub repo link (top-right corner) — perfect circle. */
 .chip.github {
-	padding: 5px 8px;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	justify-content: center;
+	border-radius: 50%;
 	text-decoration: none;
 	color: var(--text-dim);
 }
@@ -1571,8 +1575,8 @@ body {
 	border-color: var(--accent);
 }
 .chip.github svg {
-	width: 16px;
-	height: 16px;
+	width: 15px;
+	height: 15px;
 }
 
 /* ------------------------------------------------------------------ dropdown */
