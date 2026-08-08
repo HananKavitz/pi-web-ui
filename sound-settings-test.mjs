@@ -105,6 +105,10 @@ async function main() {
 		"volume slider present",
 		(await page.locator(".sound-volume input[type=range]").count()) === 1,
 	);
+	check(
+		"default volume is 100",
+		(await page.locator(".sound-vol-num").textContent())?.includes("100"),
+	);
 
 	// -- master switch gates the rows ----------------------------------------
 	const startRow = page.locator(".sound-row", { hasText: "回复开始" });

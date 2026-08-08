@@ -31,7 +31,7 @@ export const DEFAULT_SOUND_SETTINGS: SoundSettings = {
 	done: true,
 	start: false,
 	error: true,
-	volume: 60,
+	volume: 100,
 };
 
 /** Read persisted settings, falling back to defaults on any failure. */
@@ -40,7 +40,20 @@ export function loadSoundSettings(): SoundSettings {
 		const raw = localStorage.getItem(STORAGE_KEY);
 		if (!raw) return { ...DEFAULT_SOUND_SETTINGS };
 		const parsed = JSON.parse(raw) as Partial<SoundSettings>;
-		return { ...DEFAULT_SOUND_SETTINGS, ...parsed };
+		const merged: SoundSettings = { ...DEFAULT_SOUND_SETTINGS, ...parsed };
+		// Sanitize stored values so a corrupted or out-of-range entry can't
+		// break the slider or the volume math.
+		for (const k of ["enabled", "question", "done", "start", "error"] as const) {
+			if (typeof merged[k] !== "boolean") merged[k] = DEFAULT_SOUND_SETTINGS[k];
+		}
+		if (typeof merged.volume !== "number" || !Number.isFinite(merged.volume)) {
+			merged.volume = DEFAULT_SOUND_SETTINGS.volume;
+		} else {
+			// Clamp 0–100 and snap to the slider step (5) so the label and the
+			// thumb always agree.
+			merged.volume = Math.round(Math.max(0, Math.min(100, merged.volume)) / 5) * 5;
+		}
+		return merged;
 	} catch {
 		return { ...DEFAULT_SOUND_SETTINGS };
 	}

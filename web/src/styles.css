@@ -2872,15 +2872,18 @@ body {
 	box-shadow: 0 4px 16px rgba(59, 130, 246, 0.45);
 }
 
-/* Stop: soft red circle. */
+/* Stop: solid blue circle matching send, icon only. */
 .inputbox .btn.stop {
-	background: var(--red-soft);
-	border-color: rgba(248, 113, 113, 0.35);
-	color: #fca5a5;
+	background: #3b82f6;
+	border-color: #3b82f6;
+	color: #fff;
+	box-shadow: 0 2px 10px rgba(59, 130, 246, 0.35);
 }
 .inputbox .btn.stop:hover:not(:disabled) {
-	background: rgba(248, 113, 113, 0.22);
+	background: #2563eb;
+	border-color: #2563eb;
 	transform: translateY(-1px);
+	box-shadow: 0 4px 16px rgba(59, 130, 246, 0.45);
 }
 
 /* 补充: queue a message that sends the moment the current reply finishes. */

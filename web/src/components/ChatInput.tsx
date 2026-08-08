@@ -296,7 +296,7 @@ export function ChatInput({
 								title={t("stopAgent")}
 								onClick={() => send({ type: "abort" })}
 							>
-								<FiSquare /> {t("stop")}
+								<FiSquare />
 							</button>
 						</>
 					) : (
