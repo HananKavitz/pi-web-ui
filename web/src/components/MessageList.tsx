@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiArrowDown } from "react-icons/fi";
-import type { UiMessage, UiState } from "../types";
+import type { ToolStatus, UiMessage, UiState } from "../types";
 import { Message } from "./Message";
 import { CollapsedMessage } from "./CollapsedMessage";
 import { useT, type Translate } from "../i18n";
@@ -45,11 +45,12 @@ function examples(
 interface MessageListProps {
 	state: UiState;
 	liveOutputs: ReadonlyMap<string, { toolName: string; text: string }>;
+	toolStatuses: ReadonlyMap<string, ToolStatus>;
 	/** Edit-and-re-ask handler (forwarded to user message bubbles). */
 	onEdit?: (messageId: string, text: string) => void;
 }
 
-export function MessageList({ state, liveOutputs, onEdit }: MessageListProps) {
+export function MessageList({ state, liveOutputs, toolStatuses, onEdit }: MessageListProps) {
 	const t = useT();
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [stickBottom, setStickBottom] = useState(true);
@@ -166,6 +167,7 @@ export function MessageList({ state, liveOutputs, onEdit }: MessageListProps) {
 							message={m}
 							toolResults={toolResults}
 							liveOutputs={hasToolCall(m) ? liveOutputs : EMPTY_LIVE}
+							toolStatuses={toolStatuses}
 							streaming={state.isStreaming}
 							isLast={m.id === lastId}
 							onEdit={onEdit}
@@ -181,6 +183,7 @@ export function MessageList({ state, liveOutputs, onEdit }: MessageListProps) {
 						liveOutputs={
 							hasToolCall(state.streamingMessage) ? liveOutputs : EMPTY_LIVE
 						}
+						toolStatuses={toolStatuses}
 						streaming
 						isLast
 						onEdit={onEdit}

@@ -254,6 +254,8 @@ const zh = {
 	errorOutput: "错误输出",
 	output: "输出",
 	waitingOutput: "等待输出…",
+	toolDoneWaitingModel: "已结束 · 等模型",
+	waitingModel: "等待模型响应…",
 
 	/* thinking block */
 	thinkingNow: "思考中",
@@ -569,6 +571,8 @@ const en: Record<keyof typeof zh, string> = {
 	errorOutput: "Error output",
 	output: "Output",
 	waitingOutput: "Waiting for output…",
+	toolDoneWaitingModel: "Done · waiting on model",
+	waitingModel: "Waiting for model response…",
 
 	/* thinking block */
 	thinkingNow: "Thinking",

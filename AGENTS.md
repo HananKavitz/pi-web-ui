@@ -176,6 +176,13 @@ createImageBitmap 解码 SVG 会失败，SVG 作为普通文件附加让模型�
 
 ### 其他桥接
 
+- **工具结束实时状态（`tool_status`）**：服务端 `onEvent` 监听 `tool_execution_start/end`（AI 调工具路径，
+  注意区别于 `bash_execution_update`——那是 `!cmd`/终端直接执行路径专属）。`tool_execution_end` 触发时
+  立即推 `tool_status`（toolCallId/toolName/isError/exitCode/durationMs），**先于** toolResult 快照落盘——
+  浏览器 tool 卡片随即从「执行中」切到「已结束 · 等模型 · 耗时」，一眼区分「命令还在跑」vs「命令完了在等模型响应」。
+  bash 工具的 details 不带 exitCode（成功时返回 truncation 信息，失败时错误文本含 `Command exited with code N`），
+  服务端从错误文本正则提取；`tool_execution_start` 时刻记在 `conv.toolStartTimes`（按对话隔离）算真实执行耗时。
+  前端 `toolStatuses` Map 在 toolResult 落盘（snapshot prune）后清除，回落到权威的 toolResult 状态。
 ### 多对话并发（每项目「运行的对话」）
 
 - 每客户端 `convs: Map<convId, Conversation>`，**每个对话一个独立 `AgentSessionRuntime`**：

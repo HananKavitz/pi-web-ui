@@ -318,6 +318,17 @@ export interface ProviderStatus {
 	source?: string;
 }
 
+/** A tool FINISHED executing (mirrors the tool_status ServerMessage). */
+export interface ToolStatus {
+	toolCallId: string;
+	toolName: string;
+	isError: boolean;
+	/** Exit code when the tool result carries one (bash: parsed from error text). */
+	exitCode?: number;
+	/** tool_execution_start → tool_execution_end, in ms. */
+	durationMs?: number;
+}
+
 export type ServerMessage =
 	| { type: "ready"; clientId: string; serverVersion: string }
 	| { type: "snapshot"; state: UiState }
@@ -330,6 +341,16 @@ export type ServerMessage =
 			activeId: string;
 	  }
 	| { type: "tool_delta"; toolCallId: string; toolName: string; delta: string }
+	/** A tool finished executing (SDK tool_execution_end) — flips the tool card
+	 *  to "done" immediately, before the model's next response lands. */
+	| {
+			type: "tool_status";
+			toolCallId: string;
+			toolName: string;
+			isError: boolean;
+			exitCode?: number;
+			durationMs?: number;
+	  }
 	// -- terminal ------------------------------------------------------------
 	| { type: "terminal_output"; terminalId: string; data: string }
 	| { type: "terminal_exit"; terminalId: string; exitCode: number | null }

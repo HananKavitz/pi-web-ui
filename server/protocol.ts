@@ -350,6 +350,20 @@ export type ServerMessage =
 			toolName: string;
 			delta: string;
 	  }
+	/** A tool FINISHED executing (SDK tool_execution_end). Unlike toolResult
+	 *  snapshot messages, this arrives the moment the command exits — before
+	 *  the model's next response starts — so the UI can show "done, waiting
+	 *  for the model" instead of an indefinite "running". */
+	| {
+			type: "tool_status";
+			toolCallId: string;
+			toolName: string;
+			isError: boolean;
+			/** Exit code when the tool result carries one (bash returns it in details). */
+			exitCode?: number;
+			/** tool_execution_start → tool_execution_end, in ms. */
+			durationMs?: number;
+	  }
 	// -- terminal ------------------------------------------------------------
 	| { type: "terminal_output"; terminalId: string; data: string }
 	| { type: "terminal_exit"; terminalId: string; exitCode: number | null }

@@ -6,6 +6,7 @@ import {
 	FiEdit3,
 } from "react-icons/fi";
 import type {
+	ToolStatus,
 	UiBashBlock,
 	UiContentBlock,
 	UiImageBlock,
@@ -66,6 +67,8 @@ interface MessageProps {
 	/** toolResult messages by toolCallId (precomputed in MessageList, memoized). */
 	toolResults: ReadonlyMap<string, UiMessage>;
 	liveOutputs: ReadonlyMap<string, { toolName: string; text: string }>;
+	/** tool_status entries (tool_execution_end) by toolCallId. */
+	toolStatuses: ReadonlyMap<string, ToolStatus>;
 	streaming: boolean;
 	/** True when this is the last rendered message (stream cursor + live blocks). */
 	isLast: boolean;
@@ -79,6 +82,7 @@ export const Message = memo(function Message({
 	message,
 	toolResults,
 	liveOutputs,
+	toolStatuses,
 	streaming,
 	isLast,
 	onEdit,
@@ -195,6 +199,7 @@ export const Message = memo(function Message({
 									block={block}
 									toolResults={toolResults}
 									liveOutputs={liveOutputs}
+									toolStatuses={toolStatuses}
 									streaming={streaming}
 									isLast={isLast}
 								/>
@@ -325,12 +330,14 @@ function Block({
 	block,
 	toolResults,
 	liveOutputs,
+	toolStatuses,
 	streaming,
 	isLast,
 }: {
 	block: UiContentBlock;
 	toolResults: ReadonlyMap<string, UiMessage>;
 	liveOutputs: ReadonlyMap<string, { toolName: string; text: string }>;
+	toolStatuses: ReadonlyMap<string, ToolStatus>;
 	streaming: boolean;
 	isLast: boolean;
 }) {
@@ -359,7 +366,12 @@ function Block({
 	if (toolCall) {
 		const result = toolResults.get(toolCall.id);
 		const live = liveOutputs.get(toolCall.id);
-		const view: ToolView = { result, liveOutput: live?.text, streaming };
+		const view: ToolView = {
+			result,
+			liveOutput: live?.text,
+			streaming,
+			status: toolStatuses.get(toolCall.id),
+		};
 		return <ToolCallBlock block={toolCall} view={view} />;
 	}
 

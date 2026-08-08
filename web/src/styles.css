@@ -2373,6 +2373,16 @@ body {
 	color: var(--red);
 	border-color: rgba(248, 113, 113, 0.4);
 }
+.toolcall-exit {
+	font-style: normal;
+	opacity: 0.85;
+	margin-left: 6px;
+}
+.toolcall-exit::before {
+	content: "·";
+	margin-right: 6px;
+	opacity: 0.6;
+}
 .toolcall.err {
 	border-color: rgba(248, 113, 113, 0.35);
 }

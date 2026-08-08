@@ -276,6 +276,7 @@ export function App() {
 								key={chat.state.conversationId ?? "boot"}
 								state={chat.state}
 								liveOutputs={chat.liveOutputs}
+								toolStatuses={chat.toolStatuses}
 								onEdit={onEditMessage}
 							/>
 						) : (

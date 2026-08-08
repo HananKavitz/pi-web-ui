@@ -10,6 +10,7 @@ import type {
 	ProviderStatus,
 	ServerMessage,
 	SessionSummary,
+	ToolStatus,
 	UiProviderConfig,
 	UiState,
 } from "./types";
@@ -41,6 +42,13 @@ export interface ChatState {
 	state: UiState | null;
 	/** Live tool output accumulated from tool_delta messages, keyed by toolCallId. */
 	liveOutputs: Map<string, { toolName: string; text: string }>;
+	/**
+	 * Tools that FINISHED executing (tool_status from tool_execution_end), keyed
+	 * by toolCallId. Lets the card show "done · waiting for the model" even
+	 * while the session is still streaming. Cleared once the toolResult message
+	 * lands in the snapshot (it carries the authoritative result).
+	 */
+	toolStatuses: Map<string, ToolStatus>;
 	notices: Notice[];
 	serverVersion?: string;
 	/** Persisted session list for the left panel. */
@@ -100,6 +108,7 @@ type Action =
 	| { type: "status"; status: ConnStatus }
 	| { type: "snapshot"; state: UiState }
 	| { type: "tool_delta"; toolCallId: string; toolName: string; delta: string }
+	| { type: "tool_status"; status: ToolStatus }
 	| { type: "notice"; notice: Notice }
 	| { type: "dismiss_notice"; id: number }
 	| { type: "ready"; serverVersion: string }
@@ -222,6 +231,24 @@ function pruneLiveOutputs(
 	return changed ? new Map(live) : live;
 }
 
+/** Drop tool_status entries once the authoritative toolResult message lands. */
+function pruneToolStatuses(
+	statuses: Map<string, ToolStatus>,
+	state: UiState,
+): Map<string, ToolStatus> {
+	let changed = false;
+	for (const id of statuses.keys()) {
+		const landed = state.messages.some(
+			(m) => m.role === "toolResult" && m.toolCallId === id,
+		);
+		if (landed) {
+			statuses.delete(id);
+			changed = true;
+		}
+	}
+	return changed ? new Map(statuses) : statuses;
+}
+
 function reducer(state: ChatState, action: Action): ChatState {
 	switch (action.type) {
 		case "status":
@@ -242,6 +269,7 @@ function reducer(state: ChatState, action: Action): ChatState {
 				state: action.state,
 				activeConversationId: action.state.conversationId,
 				liveOutputs: pruneLiveOutputs(state.liveOutputs, action.state),
+				toolStatuses: pruneToolStatuses(state.toolStatuses, action.state),
 			};
 		case "tool_delta": {
 			const prev = state.liveOutputs.get(action.toolCallId);
@@ -255,6 +283,14 @@ function reducer(state: ChatState, action: Action): ChatState {
 			});
 			return { ...state, liveOutputs };
 		}
+		case "tool_status":
+			return {
+				...state,
+				toolStatuses: new Map(state.toolStatuses).set(
+					action.status.toolCallId,
+					action.status,
+				),
+			};
 		case "notice":
 			return { ...state, notices: [...state.notices, action.notice].slice(-6) };
 		case "dismiss_notice":
@@ -356,6 +392,7 @@ export function useChat() {
 		ready: false,
 		state: null,
 		liveOutputs: new Map(),
+		toolStatuses: new Map(),
 		notices: [],
 		sessions: [],
 		conversations: [],
@@ -475,6 +512,9 @@ export function useChat() {
 						toolName: msg.toolName,
 						delta: msg.delta,
 					});
+					break;
+				case "tool_status":
+					dispatch({ type: "tool_status", status: msg });
 					break;
 				case "notice": {
 					const id = ++noticeId.current;

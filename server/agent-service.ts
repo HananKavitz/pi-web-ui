@@ -805,6 +805,9 @@ interface Conversation {
 	lastMessagesArray: UiMessage[];
 	queueSteering: number;
 	queueFollowUp: number;
+	/** tool_execution_start timestamps keyed by toolCallId — lets tool_status
+	 *  report how long a tool actually ran (vs. waiting on the model). */
+	toolStartTimes: Map<string, number>;
 }
 
 /** Cap on simultaneously open conversations of ONE project (each keeps a full
@@ -1001,6 +1004,7 @@ export class ClientSession {
 			lastMessagesArray: [],
 			queueSteering: 0,
 			queueFollowUp: 0,
+			toolStartTimes: new Map(),
 		};
 	}
 
@@ -1073,6 +1077,55 @@ export class ClientSession {
 						delta: event.delta,
 					});
 				}
+				break;
+			}
+			case "tool_execution_start": {
+				// Record the moment the tool actually starts so tool_status can
+				// report real execution time (vs. time spent waiting on the model).
+				conv.toolStartTimes.set(event.toolCallId, Date.now());
+				break;
+			}
+			case "tool_execution_end": {
+				const startedAt = conv.toolStartTimes.get(event.toolCallId);
+				conv.toolStartTimes.delete(event.toolCallId);
+				const durationMs =
+					startedAt !== undefined ? Date.now() - startedAt : undefined;
+				// The bash tool does not put its exit code in result.details — on
+				// failure it throws "Command exited with code N" and the agent
+				// wraps that into the error result text. Try details first (future
+				// tools / SDK changes), then parse the error text.
+				const details = (event.result as { details?: unknown })?.details;
+				let exitCode: number | undefined;
+				if (
+					typeof details === "object" &&
+					details !== null &&
+					typeof (details as { exitCode?: unknown }).exitCode === "number"
+				) {
+					exitCode = (details as { exitCode: number }).exitCode;
+				} else if (event.isError) {
+					const content = (event.result as { content?: unknown })?.content;
+					const text = Array.isArray(content)
+						? content
+								.map((c) =>
+									(typeof c === "object" &&
+										c !== null &&
+										(c as { type?: unknown }).type === "text")
+											? ((c as { text?: unknown }).text ?? "")
+											: "",
+								)
+								.join("\n")
+						: "";
+					const m = text.match(/exited with code (\d+)/);
+					if (m) exitCode = Number(m[1]);
+				}
+				this.emit({
+					type: "tool_status",
+					toolCallId: event.toolCallId,
+					toolName: event.toolName,
+					isError: event.isError,
+					exitCode,
+					durationMs,
+				});
 				break;
 			}
 			case "tool_execution_update": {
