@@ -75,6 +75,8 @@ export interface UiModelInfo {
 	id: string;
 	name: string;
 	provider: string;
+	/** Whether the model accepts image input (SDK `input` includes "image"). */
+	vision: boolean;
 }
 
 export interface UiState {
@@ -154,6 +156,25 @@ export type ClientMessage =
 				mode?: "inline" | "reference" | "lines";
 				/** 1-based inclusive line range (mode "lines" only). */
 				lines?: { start: number; end: number };
+				/**
+				 * Raw image data (base64, no data: prefix) for images pasted,
+				 * dropped or uploaded directly in the browser — no workspace path
+				 * involved. When present the server sends it to the model as image
+				 * content and ignores path/mode.
+				 */
+				imageData?: string;
+				/**
+				 * Raw uploaded file bytes (base64, no data: prefix) for files
+				 * dropped/uploaded directly in the browser — no workspace path
+				 * involved. The server persists them under the data dir and
+				 * attaches as a path reference (or inlines small text files).
+				 */
+				fileData?: string;
+				mimeType?: string;
+				/** Display name for the attachment card (filename, or "粘贴图片.png"). */
+				name?: string;
+				/** Decoded byte size, for the card's size hint. */
+				size?: number;
 			}[];
 	  }
 	// -- terminal ------------------------------------------------------------
@@ -260,6 +281,8 @@ export interface ModelInfo {
 	name: string;
 	provider: string;
 	reasoning: boolean;
+	/** Whether the model accepts image input (SDK `input` includes "image"). */
+	vision: boolean;
 }
 
 // ---------------------------------------------------------------------------

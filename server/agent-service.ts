@@ -246,6 +246,32 @@ function looksLikeText(buf: Buffer): boolean {
 	return control / Math.max(text.length, 1) < 0.02;
 }
 
+/**
+ * Cheap per-message discriminator for the serialization cache key. Persisted
+ * message content never changes, so this is stable across snapshots, while
+ * several same-role messages created within one millisecond (attachment
+ * asides) get distinct keys. Text blocks are fingerprinted by a short hash of
+ * their head (paths embedded in <file> tags can share long prefixes — e.g.
+ * uploads created in the same millisecond differ only at the tail); image
+ * payloads by data length (identical lengths within the same ms are far too
+ * unlikely to matter).
+ */
+function contentFingerprint(m: AgentMessage): string {
+	const content = (m as unknown as { content?: unknown }).content;
+	if (!Array.isArray(content) || content.length === 0) return "empty";
+	const first = content[0] as { type?: string; text?: string; data?: string };
+	if (first?.type === "image") {
+		return `img:${(first.data ?? "").length}`;
+	}
+	const text = typeof first?.text === "string" ? first.text : "";
+	// djb2 — fast enough to run per snapshot, distinct enough for asides.
+	let h = 5381;
+	for (let i = 0; i < text.length && i < 512; i++) {
+		h = ((h << 5) + h + text.charCodeAt(i)) >>> 0;
+	}
+	return `txt:${h.toString(36)}:${text.length}`;
+}
+
 /** First few KB of binary data as a classic hex + ASCII dump (preview only). */
 function hexDump(buf: Buffer, maxBytes = 4096): string {
 	const data = buf.subarray(0, Math.min(buf.length, maxBytes));
@@ -1091,10 +1117,16 @@ export class ClientSession {
 	/** Serialize a persisted message with a STABLE id + cached object reference. */
 	private serializeCached(m: AgentMessage): UiMessage | null {
 		const conv = this.conv;
+		// toolResult messages are keyed by toolCallId; everything else by
+		// role+timestamp. A single prompt can emit several same-role messages
+		// within the SAME millisecond (multiple attachment asides), so the
+		// timestamp alone collides in the cache and only the first one renders
+		// — append a cheap content fingerprint to keep them distinct while
+		// staying stable across snapshots (content never changes once persisted).
 		const key =
 			m.role === "toolResult"
 				? `t:${m.toolCallId}`
-				: `${m.role}:${m.timestamp}`;
+				: `${m.role}:${m.timestamp}:${contentFingerprint(m)}`;
 		let n = conv.msgIds.get(key);
 		if (n === undefined) {
 			n = conv.nextMsgId++;
@@ -1173,7 +1205,12 @@ export class ClientSession {
 				: null,
 			isStreaming: this.session.isStreaming,
 			model: model
-				? { id: model.id, name: model.name, provider: model.provider }
+				? {
+						id: model.id,
+						name: model.name,
+						provider: model.provider,
+						vision: model.input?.includes("image") ?? false,
+				  }
 				: null,
 			thinkingLevel: state.thinkingLevel,
 			// Only the levels the current model actually supports — the SDK clamps
@@ -1804,6 +1841,13 @@ export class ClientSession {
 			path: string;
 			mode?: "inline" | "reference" | "lines";
 			lines?: { start: number; end: number };
+			/** Raw pasted/dropped/uploaded image (base64) — bypasses workspace path. */
+			imageData?: string;
+			/** Raw uploaded file bytes (base64) — persisted, attached as reference. */
+			fileData?: string;
+			mimeType?: string;
+			name?: string;
+			size?: number;
 		}[],
 	): Promise<void> {
 		try {
@@ -1849,7 +1893,11 @@ export class ClientSession {
 	 * model sees them immediately; large files are passed as a <file path="...">
 	 * reference and the model reads them on demand with its read tool (which has
 	 * built-in truncation). Images are always passed as image content. Mode
-	 * "lines" inlines only a 1-based inclusive line range of the file.
+	 * "lines" inlines only a 1-based inclusive line range of the file. Raw
+	 * pasted/dropped/uploaded images (attachment.imageData) skip the workspace
+	 * path entirely and go straight to the model as image content. Raw uploaded
+	 * files (attachment.fileData) are persisted under <dataDir>/uploads/ and
+	 * attached as absolute-path references (small text ones are inlined).
 	 */
 	private async buildAttachmentMessages(
 		attachments:
@@ -1857,12 +1905,19 @@ export class ClientSession {
 					path: string;
 					mode?: "inline" | "reference" | "lines";
 					lines?: { start: number; end: number };
+					/** Raw pasted/dropped/uploaded image (base64) — bypasses workspace path. */
+					imageData?: string;
+					/** Raw uploaded file bytes (base64) — persisted, attached as reference. */
+					fileData?: string;
+					mimeType?: string;
+					name?: string;
+					size?: number;
 			  }[]
 			| undefined,
 	): Promise<{ message: Parameters<AgentSession["sendCustomMessage"]>[0] }[]> {
 		if (!attachments || attachments.length === 0) return [];
 		const fs = await import("node:fs/promises");
-		const { resolve, sep, relative, extname } = await import("node:path");
+		const { resolve, sep, relative, extname, join } = await import("node:path");
 
 		const root = resolve(this.cwd);
 		const MAX_ATTACHMENT_BYTES = 200 * 1024;
@@ -1896,6 +1951,135 @@ export class ClientSession {
 		const MAX_LINES_READ_BYTES = 2 * 1024 * 1024;
 
 		for (const att of attachments) {
+			// Raw pasted/dropped/uploaded image — no workspace path involved (the
+			// browser downscales client-side; this guard only prevents abuse).
+			if (att.imageData) {
+				const raw = att.imageData.replace(/^data:[^;]*;base64,/, "");
+				const mimeType =
+					att.mimeType?.startsWith("image/") ? att.mimeType : "image/png";
+				const bytes = Buffer.byteLength(raw, "base64");
+				const MAX_PASTED_IMAGE_BYTES = 2 * 1024 * 1024;
+				if (bytes === 0) {
+					this.emit({
+						type: "notice",
+						level: "error",
+						text: `图片数据为空，已跳过`,
+					});
+					continue;
+				}
+				if (bytes > MAX_PASTED_IMAGE_BYTES) {
+					this.emit({
+						type: "notice",
+						level: "warning",
+						text: `图片过大已跳过（>2MB）：${att.name ?? "粘贴图片"}`,
+					});
+					continue;
+				}
+				out.push({
+					message: {
+						customType: "file",
+						content: [{ type: "image", data: raw, mimeType }],
+						display: true,
+						details: {
+							name: att.name ?? "image.png",
+							// No workspace path — the card renders without the path line.
+							path: undefined,
+							mode: "image",
+							size: bytes,
+						},
+					},
+				});
+				continue;
+			}
+
+			// Raw uploaded file (base64) — no workspace path involved. The bytes are
+			// persisted under <dataDir>/uploads/<clientId>/ so the model can read
+			// them on demand with its read tool (absolute path, no traversal guard
+			// needed — the path is server-generated). Small text uploads are inlined
+			// so the model sees them immediately; everything else becomes a path
+			// reference.
+			if (att.fileData) {
+				const buf = Buffer.from(att.fileData, "base64");
+				const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+				if (buf.length === 0) {
+					this.emit({
+						type: "notice",
+						level: "error",
+						text: `文件数据为空，已跳过`,
+					});
+					continue;
+				}
+				if (buf.length > MAX_UPLOAD_BYTES) {
+					this.emit({
+						type: "notice",
+						level: "warning",
+						text: `文件过大已跳过（>20MB）：${att.name ?? "上传文件"}`,
+					});
+					continue;
+				}
+				// Uploaded files live in a GLOBAL per-user dir (not inside the project
+				// or the per-client session store) so browsing a repo never picks up
+				// uploaded junk: <home>/.pi-web/uploads/<clientId>/.
+				const { homedir } = await import("node:os");
+				const uploadsDir = join(
+					homedir(),
+					".pi-web",
+					"uploads",
+					this.clientId,
+				);
+				const safeName = (att.name ?? "file")
+					.replace(/[\\/:*?"<>|\x00-\x1f]/g, "_")
+					.slice(0, 80);
+				const abs = join(uploadsDir, `${Date.now()}-${safeName}`);
+				await fs.mkdir(uploadsDir, { recursive: true });
+				await fs.writeFile(abs, buf);
+				// Wire format: forward-slash absolute path (the read tool accepts
+				// absolute paths; Windows uses "C:/..." — safe inside the XML-ish tag).
+				const wirePath = abs.split(sep).join("/");
+				if (buf.length <= MAX_INLINE_BYTES && looksLikeText(buf)) {
+					const lines = countLines(buf);
+					out.push({
+						message: {
+							customType: "file",
+							content: [
+								{
+									type: "text",
+									text: `\n<file path="${wirePath}">\n\`\`\`\n${buf.toString("utf8")}\n\`\`\`\n</file>`,
+								},
+							],
+							display: true,
+							details: {
+								name: safeName,
+								path: wirePath,
+								mode: "inline",
+								size: buf.length,
+								lines,
+							},
+						},
+					});
+				} else {
+					out.push({
+						message: {
+							customType: "file",
+							content: [
+								{
+									type: "text",
+									text: `<file path="${wirePath}" size="${buf.length}" />`,
+								},
+							],
+							display: true,
+							details: {
+								name: safeName,
+								path: wirePath,
+								mode: "reference",
+								size: buf.length,
+							},
+						},
+					});
+				}
+				continue;
+			}
+
 			const abs = resolve(root, att.path);
 			const rawRel = relative(root, abs);
 			if (rawRel.startsWith("..") || rawRel.includes(`${sep}..`)) {
@@ -2821,6 +3005,7 @@ export class ClientSession {
 				name: m.name,
 				provider: m.provider,
 				reasoning: m.reasoning,
+				vision: m.input?.includes("image") ?? false,
 			}));
 			this.emit({ type: "models", models });
 		} catch (err) {

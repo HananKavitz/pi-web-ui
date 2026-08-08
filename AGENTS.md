@@ -125,8 +125,23 @@ pi-web-ui/
 | `reference` | 仅路径 | 发 `<file path="..." size="..."/>`，模型按需用 read 工具读 |
 | `lines` | 选中行 | 发 `<file path="..." lines="2-3">```选中行```</file>`，只读该范围（读取上限 2MB，超限降级 reference） |
 
+**图片问答（无工作区路径）**：粘贴（Ctrl+V）/ 拖入输入框 / 🖼 上传的图片带
+`attachments[].imageData`（base64）+ `mimeType` + `name` 发送——服务端直接作为 image content
+附加，不走文件路径（`path` 忽略）。浏览器端（`web/src/image-paste.ts`）先把图片等比缩到
+≤1568px、按需转 PNG/JPEG，保证 payload 在服务端 2MB 上限内（`MAX_PASTED_IMAGE_BYTES`）。
+当前模型不支持识图（`model.vision`）时前端提示警告。
+
+**文件对话（无工作区路径）**：拖入输入框 / 📎 上传的任意文件带 `attachments[].fileData`
+（base64）发送——服务端写入全局目录 `~/.pi-web/uploads/<clientId>/`（**不放项目内**，
+`MAX_UPLOAD_BYTES` 20MB 上限），小文本（≤ `PI_WEB_INLINE_FILE_MAX` 且嗅探为文本）直接内联，
+其余以**绝对路径** reference 附加（read 工具支持绝对路径）。前端分流（`isRasterImage`）：
+**只有栅格图片**（png/jpeg/gif/webp/bmp/avif…）走 imageData 管线；**SVG 等矢量格式排除**——
+createImageBitmap 解码 SVG 会失败，SVG 作为普通文件附加让模型读源码更有用，其余文件走 fileData。
+
 附件作为独立 custom message（`sendCustomMessage` + `deliverAs: "nextTurn"` asides）发送，
 渲染成可折叠卡片。客户端 `stripFileWrapper` 的正则要兼容 `lines="..."` 属性。
+**消息序列化缓存按 `role:timestamp` 为 key——同一 prompt 的多个 aside 同毫秒创建会碰撞，
+必须靠内容指纹（`contentFingerprint`）区分，否则只有第一个渲染（已修，勿回退）。**
 
 ### 文件预览协议
 

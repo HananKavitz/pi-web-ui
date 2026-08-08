@@ -12,6 +12,7 @@ import { ModelConfigModal } from "./components/ModelConfigModal";
 import { FilePreview, type PreviewFile } from "./components/FilePreview";
 import { useChat } from "./use-chat";
 import { useT } from "./i18n";
+import { fileToProcessedImage, isRasterImage, type ProcessedImage } from "./image-paste";
 import {
 	loadSoundSettings,
 	playSound,
@@ -28,6 +29,14 @@ export interface PendingAttachment {
 	isDir?: boolean;
 	/** 1-based inclusive line range (mode "lines" only). */
 	lines?: { start: number; end: number };
+	/** Raw pasted/dropped/uploaded image (no workspace path — `path` is ""). */
+	imageData?: string;
+	mimeType?: string;
+	/** Raw uploaded file bytes (no workspace path — `path` is ""). */
+	fileData?: string;
+	size?: number;
+	/** Stable dedupe/removal key for pasted images. */
+	key?: string;
 }
 
 export function App() {
@@ -99,8 +108,99 @@ export function App() {
 				: [...prev, { path, name, mode, isDir, ...(lines ? { lines } : {}) }],
 		);
 	};
-	const removeAttachment = (path: string) =>
-		setAttachments((prev) => prev.filter((a) => a.path !== path));
+	const removeAttachment = (pathOrKey: string) =>
+		setAttachments((prev) =>
+			prev.filter((a) => (a.key ? a.key !== pathOrKey : a.path !== pathOrKey)),
+		);
+
+	// -- pasted / dropped / uploaded images (no workspace path) ---------------
+	const pasteImageId = useRef(0);
+	const lastVisionWarn = useRef(0);
+	const attachImage = (img: ProcessedImage) => {
+		// Warn when the current model can't see images — the image would still
+		// be attached but silently ignored by the provider. Throttled so adding
+		// several images at once produces one notice, not a stack.
+		const now = Date.now();
+		if (chat.state?.model && !chat.state.model.vision) {
+			if (now - lastVisionWarn.current > 10000) {
+				lastVisionWarn.current = now;
+				pushNotice("warning", t("imageNotSupported"));
+			}
+		}
+		const key = `paste-${++pasteImageId.current}`;
+		setAttachments((prev) => [
+			...prev,
+			{
+				path: "",
+				key,
+				name: img.name,
+				mode: "inline",
+				imageData: img.data,
+				mimeType: img.mimeType,
+			},
+		]);
+	};
+	const addImageFiles = async (files: File[]) => {
+		for (const f of files) {
+			const img = await fileToProcessedImage(f);
+			if (!img) {
+				pushNotice("error", t("imageLoadFailed", { name: f.name }));
+				continue;
+			}
+			attachImage(img);
+		}
+	};
+
+	// -- dropped / uploaded files (any type, no workspace path) ---------------
+	/** Keep in sync with MAX_UPLOAD_BYTES in agent-service.ts. */
+	const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+	const uploadId = useRef(0);
+	const attachLocalFile = async (f: File) => {
+		if (f.size > MAX_UPLOAD_BYTES) {
+			pushNotice(
+				"warning",
+				t("fileTooLarge", { name: f.name, size: MAX_UPLOAD_BYTES / 1024 / 1024 }),
+			);
+			return;
+		}
+		let base64: string;
+		try {
+			const dataUrl = await new Promise<string>((res, rej) => {
+				const r = new FileReader();
+				r.onload = () => res(r.result as string);
+				r.onerror = () => rej(r.error ?? new Error("read failed"));
+				r.readAsDataURL(f);
+			});
+			base64 = dataUrl.replace(/^data:[^;]*;base64,/, "");
+		} catch {
+			pushNotice("error", t("fileLoadFailed", { name: f.name }));
+			return;
+		}
+		const key = `upload-${++uploadId.current}`;
+		setAttachments((prev) => [
+			...prev,
+			{
+				path: "",
+				key,
+				name: f.name,
+				mode: "inline",
+				fileData: base64,
+				size: f.size,
+				mimeType: f.type || undefined,
+			},
+		]);
+	};
+	const addLocalFiles = async (files: File[]) => {
+		for (const f of files) {
+			// Raster images go through the resize/encode pipeline (vision content);
+			// everything else — including SVG — is uploaded raw and attached by path.
+			if (isRasterImage(f.type)) {
+				await addImageFiles([f]);
+			} else {
+				await attachLocalFile(f);
+			}
+		}
+	};
 
 	// Edit-and-re-ask: the server forks a new session at that message and re-asks
 	// the edited text there (stable callback — Message is memoized).
@@ -112,7 +212,14 @@ export function App() {
 	);
 
 	return (
-		<div className="app">
+		// Swallowing page-level drops prevents the browser from navigating away
+		// when a file is dropped outside the input bar (the input bar has its
+		// own handlers that stop propagation and process images).
+		<div
+			className="app"
+			onDragOver={(e) => e.preventDefault()}
+			onDrop={(e) => e.preventDefault()}
+		>
 			<TopBar
 				chat={chat}
 				send={send}
@@ -156,6 +263,9 @@ export function App() {
 							send={send}
 							attachments={attachments}
 							onRemoveAttachment={removeAttachment}
+							onAddImageFiles={addImageFiles}
+							onAddLocalFiles={addLocalFiles}
+							onNotice={pushNotice}
 							onSent={() => setAttachments([])}
 						/>
 					</main>

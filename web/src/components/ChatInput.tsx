@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { FiSend, FiSquare } from "react-icons/fi";
+import { FiSend, FiSquare, FiPaperclip } from "react-icons/fi";
 import type { ChatState } from "../use-chat";
 import type { ClientMessage } from "../types";
 import { useT } from "../i18n";
+import { isRasterImage } from "../image-paste";
 
 interface ChatInputProps {
 	chat: ChatState;
@@ -14,8 +15,22 @@ interface ChatInputProps {
 		mode: "inline" | "reference" | "lines";
 		isDir?: boolean;
 		lines?: { start: number; end: number };
+		/** Raw pasted/dropped/uploaded image (no workspace path). */
+		imageData?: string;
+		mimeType?: string;
+		/** Raw uploaded file bytes (no workspace path). */
+		fileData?: string;
+		size?: number;
+		/** Stable key for pasted images (path is ""). */
+		key?: string;
 	}[];
 	onRemoveAttachment: (path: string) => void;
+	/** Images pasted into the input / dropped onto it / picked via upload. */
+	onAddImageFiles: (files: File[]) => void;
+	/** Any dropped/uploaded file (images go through onAddImageFiles instead). */
+	onAddLocalFiles: (files: File[]) => void;
+	/** Client-side notices (e.g. folders dropped). */
+	onNotice: (level: "info" | "warning" | "error", text: string) => void;
 	/** Called after a prompt is successfully sent — clears pending attachments. */
 	onSent: () => void;
 }
@@ -25,11 +40,43 @@ export function ChatInput({
 	send,
 	attachments,
 	onRemoveAttachment,
+	onAddImageFiles,
+	onAddLocalFiles,
+	onNotice,
 	onSent,
 }: ChatInputProps) {
 	const t = useT();
 	const [text, setText] = useState("");
+	const [dragOver, setDragOver] = useState(false);
 	const taRef = useRef<HTMLTextAreaElement>(null);
+	const fileInputRef = useRef<HTMLInputElement>(null);
+
+	const handleFiles = (files: FileList | File[] | null) => {
+		if (!files || files.length === 0) {
+			// A folder drag lands here with an empty FileList — tell the user.
+			onNotice("warning", t("foldersNotSupported"));
+			return;
+		}
+		const images = Array.from(files).filter((f) => isRasterImage(f.type));
+		const others = Array.from(files).filter((f) => !isRasterImage(f.type));
+		if (images.length > 0) onAddImageFiles(images);
+		if (others.length > 0) onAddLocalFiles(others);
+	};
+
+	const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+		const items = e.clipboardData?.items;
+		if (!items) return;
+		const images: File[] = [];
+		for (const item of items) {
+			if (item.kind === "file" && isRasterImage(item.type)) {
+				const f = item.getAsFile();
+				if (f) images.push(f);
+			}
+		}
+		if (images.length === 0) return; // plain text paste — leave the default
+		e.preventDefault();
+		onAddImageFiles(images);
+	};
 
 	const state = chat.state;
 	const streaming = state?.isStreaming ?? false;
@@ -57,7 +104,8 @@ export function ChatInput({
 
 	const submit = () => {
 		const trimmed = text.trim();
-		if (!trimmed || !connected) return;
+		const hasRawAttach = attachments.some((a) => a.imageData || a.fileData);
+		if (!connected || (!trimmed && !hasRawAttach)) return;
 		// While the agent is streaming, the server queues this prompt (as a
 		// followUp) and delivers it when the current run finishes — see
 		// AgentService.prompt() in agent-service.ts.
@@ -65,11 +113,30 @@ export function ChatInput({
 			send({
 				type: "prompt",
 				text: trimmed,
-				attachments: attachments.map((a) => ({
-					path: a.path,
-					mode: a.mode,
-					...(a.lines ? { lines: a.lines } : {}),
-				})),
+				attachments: attachments.map((a) => {
+					if (a.imageData) {
+						return {
+							path: "",
+							imageData: a.imageData,
+							mimeType: a.mimeType,
+							name: a.name,
+						};
+					}
+					if (a.fileData) {
+						return {
+							path: "",
+							fileData: a.fileData,
+							mimeType: a.mimeType,
+							name: a.name,
+							size: a.size,
+						};
+					}
+					return {
+						path: a.path,
+						mode: a.mode,
+						...(a.lines ? { lines: a.lines } : {}),
+					};
+				}),
 			})
 		) {
 			setText("");
@@ -86,28 +153,64 @@ export function ChatInput({
 	};
 
 	return (
-		<div className="inputbar">
+		<div
+			className={`inputbar${dragOver ? " drop-active" : ""}`}
+			onDragOver={(e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				setDragOver(true);
+			}}
+			onDragLeave={(e) => {
+				if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+					setDragOver(false);
+				}
+			}}
+			onDrop={(e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				setDragOver(false);
+				handleFiles(e.dataTransfer?.files ?? null);
+			}}
+		>
+			{dragOver && (
+				<div className="drop-overlay">
+					<span>📎 {t("dropHereToAttach")}</span>
+				</div>
+			)}
 			{attachments.length > 0 && (
 				<div className="attach-row">
 					{attachments.map((a) => (
 						<span
-							key={`${a.path}|${a.mode}|${a.lines ? `${a.lines.start}-${a.lines.end}` : ""}`}
-							className={`attach-chip ${a.mode}`}
+							key={a.key ?? `${a.path}|${a.mode}|${a.lines ? `${a.lines.start}-${a.lines.end}` : ""}`}
+							className={`attach-chip ${a.imageData ? "image" : a.fileData ? "file" : a.mode}`}
 							title={
-								a.isDir
-									? t("folderRef", { path: a.path })
-									: a.mode === "reference"
-										? t("refOnly", { path: a.path })
-										: a.mode === "lines" && a.lines
-											? t("attachLines", {
-													path: a.path,
-													start: a.lines.start,
-													end: a.lines.end,
-												})
-											: t("attachContent", { path: a.path })
+								a.imageData
+									? t("attachImage", { name: a.name })
+									: a.fileData
+										? t("attachFile", { name: a.name })
+										: a.isDir
+											? t("folderRef", { path: a.path })
+											: a.mode === "reference"
+												? t("refOnly", { path: a.path })
+												: a.mode === "lines" && a.lines
+													? t("attachLines", {
+															path: a.path,
+															start: a.lines.start,
+															end: a.lines.end,
+														})
+													: t("attachContent", { path: a.path })
 							}
 						>
-							{a.isDir ? "📁" : a.mode === "reference" ? "🔗" : "📎"} {a.name}
+							{a.imageData
+								? "🖼"
+								: a.fileData
+									? "📄"
+									: a.isDir
+										? "📁"
+										: a.mode === "reference"
+											? "🔗"
+											: "📎"}{" "}
+							{a.name}
 							{a.mode === "lines" && a.lines && (
 								<span className="attach-range">
 									L{a.lines.start}-{a.lines.end}
@@ -117,7 +220,7 @@ export function ChatInput({
 								type="button"
 								className="attach-remove"
 								title={t("removeAttachment")}
-								onClick={() => onRemoveAttachment(a.path)}
+								onClick={() => onRemoveAttachment(a.key ?? a.path)}
 							>
 								×
 							</button>
@@ -151,8 +254,28 @@ export function ChatInput({
 					disabled={!connected}
 					onChange={(e) => setText(e.target.value)}
 					onKeyDown={onKeyDown}
+					onPaste={onPaste}
 				/>
 				<div className="inputbox-actions">
+					<input
+						ref={fileInputRef}
+						type="file"
+						multiple
+						hidden
+						onChange={(e) => {
+							handleFiles(e.target.files);
+							e.target.value = ""; // allow re-picking the same file
+						}}
+					/>
+					<button
+						type="button"
+						className="btn attach-img"
+						title={t("uploadFile")}
+						disabled={!connected}
+						onClick={() => fileInputRef.current?.click()}
+					>
+						<FiPaperclip />
+					</button>
 					{streaming ? (
 						<>
 							{text.trim() !== "" && (
@@ -179,7 +302,11 @@ export function ChatInput({
 							type="button"
 							className="btn send"
 							title={t("sendTip")}
-							disabled={!connected || !text.trim()}
+							disabled={
+								!connected ||
+								(!text.trim() &&
+									!attachments.some((a) => a.imageData || a.fileData))
+							}
 							onClick={submit}
 						>
 							<FiSend />

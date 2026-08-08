@@ -252,6 +252,19 @@ Key design points:
   reference and the model reads them on demand with its `read` tool, so attaching
   a 5 MB file costs only a few tokens until the model actually looks at it.
   Images are always attached as image content.
+- **Image Q&A.** Besides attaching workspace images from the right panel, you
+  can **paste a screenshot (Ctrl+V), drag an image onto the input bar, or use
+  the 🖼 upload button** — the browser downscales it to ≤1568px and encodes it,
+  and it travels with the message (`prompt.attachments[].imageData`, base64),
+  no workspace path needed. Attaching an image to a non-vision model shows a
+  warning (the image would be ignored).
+- **File chat.** Any local file (text or binary) can be dropped onto the input
+  bar or picked via the 📎 button — the browser sends the bytes as base64
+  (`prompt.attachments[].fileData`), the server persists them under
+  `~/.pi-web/uploads/<clientId>/` and attaches: small text files are inlined so
+  the model sees them immediately; large/binary files become absolute-path
+  references the model reads on demand (its read tool accepts absolute paths).
+  Cap: 20MB.
 - **File preview with line selection.** Click a file name (or its 👁 button) in
   the right panel to open a preview modal with line numbers. Click / drag /
   Shift+click to select a line range, then “添加到对话” to queue it as a `lines`

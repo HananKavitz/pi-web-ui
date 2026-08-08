@@ -158,6 +158,11 @@ export function TopBar({
 							<span className="chip-model">
 								{model ? model.name : t("selectModel")}
 							</span>
+							{model?.vision && (
+								<span className="chip-vision" title={t("vision")}>
+									🖼
+								</span>
+							)}
 							{model && <span className="chip-sub">{model.provider}</span>}
 						</>
 					}
@@ -188,6 +193,7 @@ export function TopBar({
 							<span className="dd-model-sub">
 								{m.provider}
 								{m.reasoning ? ` · ${t("reasoning")}` : ""}
+								{m.vision ? ` · 🖼 ${t("vision")}` : ""}
 							</span>
 						</DropdownItem>
 					))}
