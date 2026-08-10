@@ -329,25 +329,29 @@ export function ChatInput({
 					/>
 					{renderActions()}
 				</div>
-				{/* Mobile second line: file / model / thinking / send — the top bar
-				    folds those away on phones (styles.css ≤768px). */}
+				{/* Mobile second line: model/thinking left, file/send right — the top
+				    bar folds those away on phones (styles.css ≤768px). */}
 				<div className="input-tools">
-					<button
-						type="button"
-						className="btn attach-img"
-						title={t("uploadFile")}
-						disabled={!connected}
-						onClick={() => fileInputRef.current?.click()}
-					>
-						<FiPaperclip />
-					</button>
-					<ModelThinking
-						chat={chat}
-						send={send}
-						onManageModels={onManageModels}
-						compact
-					/>
-					{renderActions()}
+					<div className="input-tools-left">
+						<ModelThinking
+							chat={chat}
+							send={send}
+							onManageModels={onManageModels}
+							compact
+						/>
+					</div>
+					<div className="input-tools-right">
+						<button
+							type="button"
+							className="btn attach-img"
+							title={t("uploadFile")}
+							disabled={!connected}
+							onClick={() => fileInputRef.current?.click()}
+						>
+							<FiPaperclip />
+						</button>
+						{renderActions()}
+					</div>
 				</div>
 			</div>
 		</div>

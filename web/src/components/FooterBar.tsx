@@ -134,7 +134,7 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 			<span className="status-item">{connLabel}</span>
 			<span className="status-sep">·</span>
 
-			<span className="status-item" title={t("contextUsage")}>
+			<span className="status-item status-ctx" title={t("contextUsage")}>
 				{t("context")}
 				<span className={`ctx-bar ${ctxBarClass}`}>
 					{ctxPercent !== null && (

@@ -3826,16 +3826,36 @@ body {
 	.topbar {
 		padding: 8px 10px;
 		gap: 8px;
-		flex-wrap: wrap;
+		flex-wrap: nowrap;
 	}
 	.brand-name,
-	.conn-label {
+	.conn-label,
+	.brand-logo,
+	.brand .conn-dot {
 		display: none;
 	}
 	.chip > span:not(.update-dot) {
 		display: none;
 	}
 
+	/* ---- input becomes two lines: textarea, then tools below ---- */
+	.input-tools {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 6px;
+		flex-wrap: nowrap;
+	}
+	.input-tools-left,
+	.input-tools-right {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+	}
+	.input-tools-right {
+		flex-shrink: 0;
+	}
 	/* ---- input becomes two lines: textarea, then tools below ---- */
 	.input-tools {
 		display: flex;
@@ -3853,7 +3873,12 @@ body {
 		display: inline;
 	}
 	.input-tools .chip-model {
-		max-width: 150px;
+		max-width: 96px;
+	}
+	/* Compress the thinking chip: smaller padding so both chips + actions
+	   fit one line on narrow phones. */
+	.input-tools .chip {
+		padding: 5px 8px;
 	}
 	.topbar-actions {
 		gap: 6px;
@@ -4027,17 +4052,27 @@ body {
 		height: 92vh;
 	}
 
-	/* ---- footer: keep the cwd path input — wrap instead of hiding ---- */
+	/* ---- footer: phones show only context usage + cwd, one line ---- */
 	.statusbar {
-		flex-wrap: wrap;
-		row-gap: 4px;
+		flex-wrap: nowrap;
 		padding: 6px 10px;
 		font-size: 10.5px;
 	}
+	.status-dot,
+	.status-sep,
+	.status-item:not(.status-ctx):not(.status-cwd) {
+		display: none;
+	}
+	.status-ctx {
+		flex-shrink: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
 	.status-cwd-wrap {
-		width: 100%;
-		max-width: 100%;
-		margin-left: 0;
+		flex: 1;
+		min-width: 0;
+		margin-left: auto;
 	}
 	.status-cwd-input {
 		font-size: 12px; /* avoid iOS auto-zoom on focus */
