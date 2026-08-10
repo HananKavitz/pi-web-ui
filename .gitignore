@@ -9,6 +9,9 @@ data/
 # per-project personal commands (never committed)
 .pi/commands.json
 
+# local editor config
+.vscode/
+
 # ad-hoc debug / repro scripts
 repro-view-switch.mjs
 switch-test3.tmp.mjs

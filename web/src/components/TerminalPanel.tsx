@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { randomUuid } from "../uuid";
 import {
 	FiEdit2,
-	FiFileText,
 	FiMenu,
 	FiPlay,
 	FiPlus,
@@ -298,16 +297,6 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 							))}
 						</>
 					)}
-				</div>
-
-				<div className="panel-footer">
-					<div className="cmd-file" title={chat.commandsPath}>
-						<FiFileText className="cmd-file-icon" />
-						<span className="cmd-file-path">
-							{chat.commandsPath || ".pi/commands.json"}
-						</span>
-					</div>
-					<div className="cmd-file-hint">{t("commandsFileHint")}</div>
 				</div>
 
 				{/* ---------------- tabs (below the command list) ---------------- */}

@@ -179,12 +179,6 @@ body {
 	padding: 6px;
 }
 
-.panel-footer {
-	padding: 8px 12px;
-	border-top: 1px solid var(--border-soft);
-	flex-shrink: 0;
-}
-
 /* ------------------------------------------------------ extension widgets */
 
 .panel-widgets {
@@ -383,6 +377,14 @@ body {
 	overflow-y: auto;
 	padding: 6px 6px 8px;
 	border-bottom: 2px solid var(--border);
+}
+
+/* 最近项目标题固定：项目多时内部滚动，标题不跟着滚走 */
+.panel-projects .panel-section-title {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background: var(--bg-elev);
 }
 
 .panel-section-title {
@@ -1216,29 +1218,6 @@ body {
 	margin-top: 8px;
 }
 
-.cmd-file {
-	display: flex;
-	align-items: center;
-	gap: 5px;
-	font-size: 10.5px;
-	color: var(--text-faint);
-	font-family: var(--mono);
-	min-width: 0;
-}
-.cmd-file-icon {
-	flex-shrink: 0;
-}
-.cmd-file-path {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-.cmd-file-hint {
-	margin-top: 3px;
-	font-size: 10.5px;
-	color: var(--text-faint);
-}
-
 /* ------------------------------------------------------- terminal tabs */
 
 .term-tab {
@@ -1546,6 +1525,19 @@ body {
 	min-width: 0;
 }
 
+/* Desktop-only toolbar block (model/thinking/sound/lang/update/github).
+   On phones it is replaced by the single "⋯" button (.topbar-more). */
+.topbar-desktop {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+/* Mobile-only "⋯" panel — hidden on desktop where each item has its own chip. */
+.topbar-more {
+	display: none;
+}
+
 .chip {
 	display: inline-flex;
 	align-items: center;
@@ -1704,17 +1696,45 @@ body {
 	font-size: 12px;
 }
 
+.dd-model-cell {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	min-width: 0;
+	flex: 1;
+}
+.dd-model-meta {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 4px 8px;
+	min-width: 0;
+}
 .dd-model-name {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
-
-.dd-model-sub {
+.dd-model-provider {
 	flex-shrink: 0;
 	font-size: 11px;
 	color: var(--text-faint);
 	font-family: var(--mono);
+}
+.dd-model-badges {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 5px;
+}
+.dd-model-badge {
+	font-size: 10.5px;
+	line-height: 1.5;
+	color: var(--text-faint);
+	background: var(--bg-elev);
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	padding: 0 6px;
+	white-space: nowrap;
 }
 
 .dd-refresh {
@@ -1730,6 +1750,14 @@ body {
 }
 .dd-refresh:hover {
 	color: var(--accent);
+}
+
+/* GitHub link row inside the mobile "⋯" panel. */
+.dd-refresh.dd-more-link {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	text-decoration: none;
 }
 
 /* ------------------------------------------------------------ self-update */
@@ -2758,18 +2786,29 @@ body {
 	max-width: 860px;
 	margin: 0 auto;
 	display: flex;
-	align-items: flex-end;
-	gap: 10px;
+	flex-direction: column;
+	gap: 8px;
 	background: var(--bg-elev2);
 	border: 1px solid var(--border);
 	border-radius: 16px;
-	padding: 10px 10px 10px 10px;
+	padding: 10px;
 	transition:
 		border-color 0.2s ease,
 		box-shadow 0.2s ease;
 	box-shadow:
 		inset 0 1px 0 rgba(255, 255, 255, 0.04),
 		0 4px 18px rgba(0, 0, 0, 0.28);
+}
+.inputbox-row {
+	display: flex;
+	align-items: flex-end;
+	gap: 10px;
+	min-width: 0;
+}
+/* Mobile tools row (file / model / thinking / send) — desktop hides it,
+   phones show it under the textarea (see the ≤768px block). */
+.input-tools {
+	display: none;
 }
 .inputbox:focus-within {
 	border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
@@ -3777,8 +3816,13 @@ body {
 /* ================================================================ mobile (≤768px) */
 
 @media (max-width: 768px) {
-	/* ---- topbar: icon-only chips, wrap instead of scroll (a scroll
-	       container would clip the absolutely-positioned dropdown menus) ---- */
+	/* ---- topbar: only nav + new-chat stay; the rest folds into "⋯" ---- */
+	.topbar-desktop {
+		display: none;
+	}
+	.topbar-more {
+		display: inline-flex;
+	}
 	.topbar {
 		padding: 8px 10px;
 		gap: 8px;
@@ -3790,6 +3834,26 @@ body {
 	}
 	.chip > span:not(.update-dot) {
 		display: none;
+	}
+
+	/* ---- input becomes two lines: textarea, then tools below ---- */
+	.input-tools {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.inputbox-row .attach-img,
+	.inputbox-row .inputbox-actions {
+		display: none;
+	}
+	/* Keep labels readable in the input tools row (the global chip rule
+	   above hides them) and give the model name room to truncate. */
+	.input-tools .chip > span:not(.update-dot) {
+		display: inline;
+	}
+	.input-tools .chip-model {
+		max-width: 150px;
 	}
 	.topbar-actions {
 		gap: 6px;

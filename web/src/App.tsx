@@ -292,6 +292,7 @@ export function App() {
 							onAddImageFiles={addImageFiles}
 							onAddLocalFiles={addLocalFiles}
 							onNotice={pushNotice}
+							onManageModels={() => setManageModelsOpen(true)}
 							onSent={() => setAttachments([])}
 						/>
 					</main>

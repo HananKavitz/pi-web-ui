@@ -157,13 +157,13 @@ pi-web-ui server uninstall             # 彻底移除服务
 
 ## 配置
 
-| 环境变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `PORT` | `8787` | HTTP/WebSocket 端口 |
-| `PI_WEB_CWD` | 服务端 cwd | 智能体操作的工作区目录（读/编辑/bash/写） |
-| `PI_WEB_DATA_DIR` | `<cwd>/.pi-web` | 每客户端会话目录的存放位置 |
-| `PI_WEB_INLINE_FILE_MAX` | `12288` (12KB) | 小于等于该大小的文本附件直接内联进模型上下文；更大的文件以路径引用方式传入，模型按需用 read 工具读取（小改动省 token） |
-| `PI_CODING_AGENT_DIR` | `~/.pi/agent` | pi 配置目录（auth.json、models.json、skills、extensions） |
+| 环境变量                   | 默认值            | 说明                                                                                                                   |
+| -------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                   | `8787`          | HTTP/WebSocket 端口                                                                                                    |
+| `PI_WEB_CWD`             | 服务端 cwd        | 智能体操作的工作区目录（读/编辑/bash/写）                                                                              |
+| `PI_WEB_DATA_DIR`        | `<cwd>/.pi-web` | 每客户端会话目录的存放位置                                                                                             |
+| `PI_WEB_INLINE_FILE_MAX` | `12288` (12KB)  | 小于等于该大小的文本附件直接内联进模型上下文；更大的文件以路径引用方式传入，模型按需用 read 工具读取（小改动省 token） |
+| `PI_CODING_AGENT_DIR`    | `~/.pi/agent`   | pi 配置目录（auth.json、models.json、skills、extensions）                                                              |
 
 示例——让智能体面向某个项目：
 
@@ -265,14 +265,14 @@ server/agent-service.ts   每客户端 ClientSession:
 
 ## 脚本
 
-| 脚本 | 作用 |
-| --- | --- |
-| `npm run dev` | 服务端（tsx watch）+ Vite dev server + WS 代理 |
-| `npm run build` | 类型检查 + 构建前端和服务端 |
-| `npm start` | 运行生产服务端（提供 `web/dist`） |
-| `npm run typecheck` | 双端 `tsc --noEmit` |
-| `node terminal-smoke-test.mjs` | WS 层终端/命令协议测试（先 build） |
-| `node terminal-browser-test.mjs` | 终端视图的无头浏览器 E2E（先 build） |
+| 脚本                               | 作用                                           |
+| ---------------------------------- | ---------------------------------------------- |
+| `npm run dev`                    | 服务端（tsx watch）+ Vite dev server + WS 代理 |
+| `npm run build`                  | 类型检查 + 构建前端和服务端                    |
+| `npm start`                      | 运行生产服务端（提供`web/dist`）             |
+| `npm run typecheck`              | 双端`tsc --noEmit`                           |
+| `node terminal-smoke-test.mjs`   | WS 层终端/命令协议测试（先 build）             |
+| `node terminal-browser-test.mjs` | 终端视图的无头浏览器 E2E（先 build）           |
 
 ## 部署与开机自启
 

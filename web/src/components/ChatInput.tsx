@@ -5,6 +5,8 @@ import type { ClientMessage } from "../types";
 import { useT } from "../i18n";
 import { isRasterImage } from "../image-paste";
 
+import { ModelThinking } from "./ModelThinking";
+
 interface ChatInputProps {
 	chat: ChatState;
 	send: (msg: ClientMessage) => boolean;
@@ -33,6 +35,8 @@ interface ChatInputProps {
 	onNotice: (level: "info" | "warning" | "error", text: string) => void;
 	/** Called after a prompt is successfully sent — clears pending attachments. */
 	onSent: () => void;
+	/** Opens the custom-model config modal (mobile input row). */
+	onManageModels: () => void;
 }
 
 export function ChatInput({
@@ -44,6 +48,7 @@ export function ChatInput({
 	onAddLocalFiles,
 	onNotice,
 	onSent,
+	onManageModels,
 }: ChatInputProps) {
 	const t = useT();
 	const [text, setText] = useState("");
@@ -154,7 +159,51 @@ export function ChatInput({
 		}
 	};
 
+	// Send / stop / supplement — rendered twice (desktop row + mobile tools
+	// row); CSS hides whichever set doesn't apply at the current width.
+	const renderActions = () => (
+		<div className="inputbox-actions">
+			{streaming ? (
+				<>
+					{text.trim() !== "" && (
+						<button
+							type="button"
+							className="btn supplement"
+							title={t("supplementTip")}
+							onClick={submit}
+						>
+							<FiSend /> {t("supplement")}
+						</button>
+					)}
+					<button
+						type="button"
+						className="btn stop"
+						title={t("stopAgent")}
+						onClick={() => send({ type: "abort" })}
+					>
+						<FiSquare />
+					</button>
+				</>
+			) : (
+				<button
+					type="button"
+					className="btn send"
+					title={t("sendTip")}
+					disabled={
+						!connected ||
+						(!text.trim() &&
+							!attachments.some((a) => a.imageData || a.fileData))
+					}
+					onClick={submit}
+				>
+					<FiArrowUp />
+				</button>
+			)}
+		</div>
+	);
+
 	return (
+
 		<div
 			className={`inputbar${dragOver ? " drop-active" : ""}`}
 			onDragOver={(e) => {
@@ -252,68 +301,53 @@ export function ChatInput({
 						e.target.value = ""; // allow re-picking the same file
 					}}
 				/>
-				<button
-					type="button"
-					className="btn attach-img"
-					title={t("uploadFile")}
-					disabled={!connected}
-					onClick={() => fileInputRef.current?.click()}
-				>
-					<FiPaperclip />
-				</button>
-				<textarea
-					ref={taRef}
-					value={text}
-					rows={1}
-					placeholder={
-						connected
-							? streaming
-								? t("placeholderStreaming")
-								: t("placeholderIdle")
-							: t("placeholderConnecting")
-					}
-					disabled={!connected}
-					onChange={(e) => setText(e.target.value)}
-					onKeyDown={onKeyDown}
-					onPaste={onPaste}
-				/>
-				<div className="inputbox-actions">
-					{streaming ? (
-						<>
-							{text.trim() !== "" && (
-								<button
-									type="button"
-									className="btn supplement"
-									title={t("supplementTip")}
-									onClick={submit}
-								>
-									<FiSend /> {t("supplement")}
-								</button>
-							)}
-							<button
-								type="button"
-								className="btn stop"
-								title={t("stopAgent")}
-								onClick={() => send({ type: "abort" })}
-							>
-								<FiSquare />
-							</button>
-						</>
-					) : (
-						<button
-							type="button"
-							className="btn send"
-							title={t("sendTip")}
-							disabled={
-								!connected ||
-								(!text.trim() &&
-									!attachments.some((a) => a.imageData || a.fileData))
-							}
-							onClick={submit}
-						>
-							<FiArrowUp />
-						</button>
-					)}
+				<div className="inputbox-row">
+					<button
+						type="button"
+						className="btn attach-img"
+						title={t("uploadFile")}
+						disabled={!connected}
+						onClick={() => fileInputRef.current?.click()}
+					>
+						<FiPaperclip />
+					</button>
+					<textarea
+						ref={taRef}
+						value={text}
+						rows={1}
+						placeholder={
+							connected
+								? streaming
+									? t("placeholderStreaming")
+									: t("placeholderIdle")
+								: t("placeholderConnecting")
+						}
+						disabled={!connected}
+						onChange={(e) => setText(e.target.value)}
+						onKeyDown={onKeyDown}
+						onPaste={onPaste}
+					/>
+					{renderActions()}
+				</div>
+				{/* Mobile second line: file / model / thinking / send — the top bar
+				    folds those away on phones (styles.css ≤768px). */}
+				<div className="input-tools">
+					<button
+						type="button"
+						className="btn attach-img"
+						title={t("uploadFile")}
+						disabled={!connected}
+						onClick={() => fileInputRef.current?.click()}
+					>
+						<FiPaperclip />
+					</button>
+					<ModelThinking
+						chat={chat}
+						send={send}
+						onManageModels={onManageModels}
+						compact
+					/>
+					{renderActions()}
 				</div>
 			</div>
 		</div>
