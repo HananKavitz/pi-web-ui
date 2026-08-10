@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
+import { randomUuid } from "./uuid";
 import type {
 	ClientMessage,
 	CommandDef,
@@ -374,7 +375,7 @@ const CLIENT_ID_KEY = "pi-web-client-id";
 export function getClientId(): string {
 	let id = localStorage.getItem(CLIENT_ID_KEY);
 	if (!id) {
-		id = crypto.randomUUID();
+		id = randomUuid();
 		localStorage.setItem(CLIENT_ID_KEY, id);
 	}
 	return id;

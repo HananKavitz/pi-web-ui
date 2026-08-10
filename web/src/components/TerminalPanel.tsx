@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { randomUuid } from "../uuid";
 import {
 	FiEdit2,
 	FiFileText,
@@ -75,7 +76,7 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 
 	const openTab = (meta: Omit<TerminalMeta, "running" | "exitCode" | "id">) => {
 		if (!chat.ready) return; // topbar already shows the connection state
-		const id = crypto.randomUUID();
+		const id = randomUuid();
 		terminal.create({ ...meta, id, running: true, exitCode: null });
 		setActiveId(id);
 		setSideOpen(false);
