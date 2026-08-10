@@ -3936,6 +3936,16 @@ body {
 	}
 
 	/* ---- side panels become sliding drawers ---- */
+
+	/* File tree: hover-revealed attach buttons don't work on touch — always
+	   show them; hide the hover-only tooltip bubbles. */
+	.file-item .file-attach {
+		display: inline-flex;
+	}
+	.file-attach::after,
+	.file-attach::before {
+		display: none;
+	}
 	.panel-drawer {
 		display: block;
 		position: fixed;
