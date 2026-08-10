@@ -3856,13 +3856,6 @@ body {
 	.input-tools-right {
 		flex-shrink: 0;
 	}
-	/* ---- input becomes two lines: textarea, then tools below ---- */
-	.input-tools {
-		display: flex;
-		align-items: center;
-		flex-wrap: wrap;
-		gap: 6px;
-	}
 	.inputbox-row .attach-img,
 	.inputbox-row .inputbox-actions {
 		display: none;
@@ -3873,12 +3866,20 @@ body {
 		display: inline;
 	}
 	.input-tools .chip-model {
-		max-width: 96px;
+		max-width: 80px;
 	}
-	/* Compress the thinking chip: smaller padding so both chips + actions
-	   fit one line on narrow phones. */
+	/* Compress chips so model + thinking + attach + send fit one line on
+	   narrow phones: allow shrinking with ellipsis instead of wrapping. */
 	.input-tools .chip {
 		padding: 5px 8px;
+		flex-shrink: 1;
+		min-width: 0;
+	}
+	.input-tools .chip .chip-sub,
+	.input-tools .chip .chip-model {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		min-width: 0;
 	}
 	.topbar-actions {
 		gap: 6px;
