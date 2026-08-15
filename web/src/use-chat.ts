@@ -15,6 +15,7 @@ import type {
 	SlashCommandInfo,
 	ToolStatus,
 	UiProviderConfig,
+	UiSettingsState,
 	UiState,
 } from "./types";
 
@@ -113,6 +114,8 @@ export interface ChatState {
 	terminals: TerminalMeta[];
 	/** Goal / review status (set via the goal bar). */
 	goal: GoalStatus;
+	/** Settings-panel state (system prompt, skill/extension toggles, presets). */
+	settings: UiSettingsState | null;
 }
 
 type Action =
@@ -171,7 +174,8 @@ type Action =
 	| { type: "terminal_remove"; id: string }
 	| { type: "terminal_exit"; terminalId: string; exitCode: number | null }
 	| { type: "terminal_restart"; terminalId: string }
-	| { type: "goal_status"; status: GoalStatus };
+	| { type: "goal_status"; status: GoalStatus }
+	| { type: "settings"; settings: UiSettingsState };
 
 const MAX_LIVE_OUTPUT = 200_000;
 const MAX_TERM_BUFFER = 200_000;
@@ -379,6 +383,8 @@ function reducer(state: ChatState, action: Action): ChatState {
 			return { ...state, slashCommands: action.commands };
 		case "goal_status":
 			return { ...state, goal: action.status };
+		case "settings":
+			return { ...state, settings: action.settings };
 		case "terminal_add":
 			return { ...state, terminals: [...state.terminals, action.meta] };
 		case "terminal_remove":
@@ -459,6 +465,7 @@ export function useChat() {
 		slashCommands: [],
 		terminals: [],
 		goal: DEFAULT_GOAL,
+		settings: null,
 	});
 	const wsRef = useRef<WebSocket | null>(null);
 	/** Terminal output bridge (writers keyed by terminalId). */
@@ -661,6 +668,9 @@ export function useChat() {
 					break;
 				case "goal_status":
 					dispatch({ type: "goal_status", status: msg.status });
+					break;
+				case "settings_state":
+					dispatch({ type: "settings", settings: msg.settings });
 					break;
 				default:
 					break;

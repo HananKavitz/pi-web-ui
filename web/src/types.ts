@@ -246,7 +246,25 @@ export type ClientMessage =
 			reviewModel?: string;
 			maxRounds?: number;
 			locked?: boolean;
-	  };
+	  }
+	// -- settings (system prompt / skills / extensions / presets) ------------
+	/** Request the current settings state (also pushed automatically on attach). */
+	| { type: "get_settings" }
+	/** Apply a partial settings update: system prompt (mode + text) or the
+	 *  disabled skill/extension sets. */
+	| {
+			type: "set_settings";
+			promptMode?: "append" | "replace";
+			customSystemPrompt?: string;
+			disabledSkills?: string[];
+			disabledExtensions?: string[];
+	  }
+	/** Save the CURRENT settings as a named preset (overwrites if it exists). */
+	| { type: "save_preset"; name: string }
+	/** Replace the current settings with the named preset and apply it. */
+	| { type: "apply_preset"; name: string }
+	/** Remove the named preset. */
+	| { type: "delete_preset"; name: string };
 
 export interface SessionSummary {
 	path: string;
@@ -402,6 +420,53 @@ export interface ToolStatus {
 	durationMs?: number;
 }
 
+
+// ---------------------------------------------------------------------------
+// Settings (system prompt / skills / extensions / presets)
+// ---------------------------------------------------------------------------
+
+/** One loaded skill, with whether it is currently enabled. Disabled skills are
+ *  excluded from the system prompt and from the /skill: command catalog. */
+export interface UiSkillInfo {
+	name: string;
+	description: string;
+	enabled: boolean;
+}
+
+/** One loaded extension, with whether it is currently enabled. Disabled
+ *  extensions are unloaded from the runtime (tools/commands disappear). */
+export interface UiExtensionInfo {
+	/** Stable identity for the toggle: the npm spec for packages, the resolved
+	 *  entry path otherwise. */
+	id: string;
+	/** Display label: npm package spec (npm:pi-foo) or the path basename. */
+	name: string;
+	/** Resolved entry path. */
+	path: string;
+	enabled: boolean;
+}
+
+/** A named combination of prompt mode/text + disabled skills/extensions that
+ *  the user can re-apply in one click. Persisted per client. */
+export interface UiSettingsPreset {
+	name: string;
+	promptMode: "append" | "replace";
+	customSystemPrompt: string;
+	disabledSkills: string[];
+	disabledExtensions: string[];
+}
+
+/** Full settings state pushed to the browser (settings_state). */
+export interface UiSettingsState {
+	promptMode: "append" | "replace";
+	customSystemPrompt: string;
+	disabledSkills: string[];
+	disabledExtensions: string[];
+	skills: UiSkillInfo[];
+	extensions: UiExtensionInfo[];
+	presets: UiSettingsPreset[];
+}
+
 export type ServerMessage =
 	| { type: "ready"; clientId: string; serverVersion: string }
 	| { type: "snapshot"; state: UiState }
@@ -500,3 +565,7 @@ export type ServerMessage =
 	// -- goal / review -------------------------------------------------------
 	/** Goal status pushed whenever it changes (drives the goal bar UI). */
 	| { type: "goal_status"; status: GoalStatus }
+	/** Current settings state (system prompt mode/text, enabled skills &
+	 *  extensions, saved presets). Pushed on attach and after every settings
+	 *  change. */
+	| { type: "settings_state"; settings: UiSettingsState }

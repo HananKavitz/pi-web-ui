@@ -89,6 +89,18 @@ pi-web-ui/
 │   │                           #     >0=有限（cap 到 50）；调研提问不设上限（自行收敛，靠时长/空闲超时兜底）。
 │   │                           #     模型选择 + 轮数 + 锁定经 set_goal_prefs 持久化到 client-state.json
 │   │                           #     （stateStore.goalPrefs，attachSink 重连时回推 goal_status，刷新即恢复）。
+	│   │                           #   · 设置面板（settings_state / set_settings / save_preset / apply_preset /
+	│   │                           #     delete_preset）：顶栏 ⚙ 打开。① 系统提示词：append（追加到默认提示词
+	│   │                           #     末尾）或 replace（整体替换，项目上下文/技能段仍自动附加）——经
+	│   │                           #     resourceLoaderOptions 的 systemPromptOverride + appendSystemPromptOverride
+	│   │                           #     实现（官方钩子，每次 reload() 重放）；② 技能/插件开关：skillsOverride /
+	│   │                           #     extensionsOverride 按名/按源（npm spec 或路径）过滤，session.reload() 后
+	│   │                           #     立即从系统提示词、/skill: 目录和扩展命令中消失；③ 预设：把当前设置
+	│   │                           #     （提示词+开关）存成命名组合，一键 apply/delete。设置存 client-state.json
+	│   │                           #     （stateStore.settings/presets，按客户端）；已知列表缓存（knownSkills /
+	│   │                           #     knownExtensions）保证禁用后条目仍在面板里可重新启用；回复流式中改设置
+	│   │                           #     不立即 reload（防拆毁运行中的 run）——pendingSettingsReload 在 agent_end 后
+	│   │                           #     延迟应用。协议类型在 protocol.ts / types.ts 手工同步。
 │   ├── serialize.ts            # SDK 消息 → UiMessage 序列化（截断、稳定 id、对象缓存）
 │   ├── ensure-bash.ts          # Windows 轻量 bash 兜底：无 Git Bash 时自动下载 busybox-w32
 │   │                           #   （单 exe ~660KB，含 bash/iconv/sh/timeout）到 ~/.pi-web/bin/bash.exe
@@ -133,6 +145,7 @@ pi-web-ui/
 | `TopBar.tsx` / `FooterBar.tsx` | 顶栏（模型/思考强度/声音/新对话/视图切换）、底栏（上下文/成本/工作目录） |
 | `Dialog.tsx` | 扩展 `ui.select/confirm/input` → 浏览器弹窗 |
 | `ModelConfigModal.tsx` / `PiSetupModal.tsx` | models.json 管理 / 首次配置引导 |
+| `SettingsModal.tsx` | 设置面板：系统提示词（append/replace 模式 + 文本，失焦自动应用）、技能/插件开关（即时生效）、预设（保存/应用/删除当前组合） |
 | `Markdown.tsx` / `Dropdown.tsx` / `copy-button.tsx` / `SoundSettings.tsx` | 通用件 |
 
 ## 4. 核心架构（改代码前必读）
@@ -299,6 +312,7 @@ npm run test:freeze  # 冻结/重连回归测试（Playwright，需要 chromium 
 - **需要真模型/走审查调研的**（goal-*, wizard）会真实调用 LLM、耗 token 且依赖本机模型（opencode-go 可能慢/卡）——写测试时区分「协议冒烟（无 token，如 goal-test/goal-prefs 的 set/clear 轮序）」和「live（真调用）」两类，避免误以为功能坏。
 - **验证项**：每改完一版，跑本地 server（隔离端口+独立 data-dir）→ 对应 `*-test.mjs` → `npm run typecheck` → 涉及 UI 再用 `playwright` 浏览器测试（chromium 路径见各测试文件 HEADLESS 常量）。
 - **goal 家族测试**（仓库根 `goal-*.mjs`）：`goal-test`=协议冒烟（set/clear/locked/review-model/rounds 轮序，无 token）；`goal-prefs-test`=偏好持久化跨 reload；`goal-pill-test`=GoalBar UI（胶囊、向上下拉）；`goal-rounds-test`=最大轮数**直接输入**控件（可输任意值/0=不限）；`goal-autostart-test`=直接 set_goal（不带向导）也**自动触发生成**；`goal-abort-test`=**手动 Stop 即清除 goal、停止审查循环**（agent_end 里助手消息 stopReason==="aborted" 判中断）；`goal-wizard-test`=问卷收敛 auto-set + **auto-generate 自动触发生成**；`goal-wizard-cancel-test`=调研取消/超时；`goal-review-loop-test`=锁定+无限轮数的真实审查循环（需要真模型，本机 deepseek 可能卡，fail 属环境非概率即可）。
+- **settings 家族测试**（`settings-test.mjs`，端口 8931）：设置面板协议冒烟——settings_state 推送 / get_settings / set_settings（提示词 append+replace、技能与插件开关） / save_preset / apply_preset / delete_preset / 重连后持久化；假 agent 目录（隔离）只测协议，指向真实 agent 目录可覆盖开关往返。
 
 ## 6. 发布流程（GitHub + npm）
 

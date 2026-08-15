@@ -8,6 +8,7 @@ import {
 	FiMessageSquare,
 	FiMoreHorizontal,
 	FiPlus,
+	FiSettings,
 	FiSquare,
 	FiTerminal,
 	FiVolume2,
@@ -38,6 +39,8 @@ interface TopBarProps {
 	onOpenPanel: (side: "left" | "right") => void;
 	/** Open the custom model config panel. */
 	onManageModels: () => void;
+	/** Open the settings panel (system prompt / skills / extensions / presets). */
+	onOpenSettings: () => void;
 	/** Sound notification settings + change handler (owned by App). */
 	sound: SoundSettings;
 	onSoundChange: (settings: SoundSettings) => void;
@@ -51,6 +54,7 @@ export function TopBar({
 	onViewChange,
 	onOpenPanel,
 	onManageModels,
+	onOpenSettings,
 	sound,
 	onSoundChange,
 	onSoundPreview,
@@ -232,6 +236,16 @@ export function TopBar({
 						onManageModels={onManageModels}
 					/>
 
+					<button
+						type="button"
+						className="chip"
+						title={t("settingsTitle")}
+						onClick={onOpenSettings}
+					>
+						<FiSettings />
+						<span className="chip-sub">{t("settings")}</span>
+					</button>
+
 					<Dropdown
 						trigger={
 							<>
@@ -349,6 +363,15 @@ export function TopBar({
 						}}
 					>
 						<div className="dd-header">{t("sound")}</div>
+						<div className="dd-header">{t("settings")}</div>
+						<DropdownItem
+							onClick={() => {
+								setMoreOpen(false);
+								onOpenSettings();
+							}}
+						>
+							<FiSettings /> {t("settingsTitle")}
+						</DropdownItem>
 						<SoundSettingsPanel
 							settings={sound}
 							onChange={onSoundChange}

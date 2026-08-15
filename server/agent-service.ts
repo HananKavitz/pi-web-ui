@@ -19,7 +19,7 @@ import {
 	mkdirSync,
 	watch,
 } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	createAgentSessionFromServices,
@@ -49,8 +49,11 @@ import type {
 	ServerMessage,
 	SessionSummary,
 	SlashCommandInfo,
+	UiExtensionInfo,
 	UiMessage,
 	UiProviderConfig,
+	UiSettingsState,
+	UiSkillInfo,
 	UiState,
 } from "./protocol.js";
 import {
@@ -895,6 +898,35 @@ async function readDirForUI(
 // Per-client persisted UI state (<dataDir>/client-state.json)
 // ---------------------------------------------------------------------------
 
+/** System-prompt mode: append the custom text to the built prompt, or replace
+ *  the whole system prompt with it. */
+type PromptMode = "append" | "replace";
+
+/** Settings-panel state (system prompt + disabled skills/extensions). */
+interface ClientSettings {
+	promptMode: PromptMode;
+	customSystemPrompt: string;
+	disabledSkills: string[];
+	disabledExtensions: string[];
+}
+
+/** A named combo of prompt + skill/extension toggles the user can re-apply. */
+interface SettingsPreset extends ClientSettings {
+	name: string;
+}
+
+/** Stable identity of an extension for the enable/disable toggle: the npm
+ *  spec for packages (survives version bumps), the resolved entry path
+ *  otherwise. */
+function extensionKey(e: {
+	sourceInfo?: { origin?: string; source?: string; path?: string };
+	path: string;
+}): string {
+	const src = e.sourceInfo;
+	if (src?.origin === "package" && src.source) return src.source;
+	return src?.path ?? e.path;
+}
+
 interface ClientState {
 	/** Absolute path of the workspace this client last used. */
 	lastCwd?: string;
@@ -908,6 +940,11 @@ interface ClientState {
 		maxRounds: number;
 		locked: boolean;
 	};
+	/** Settings-panel state (system prompt mode/text + disabled skills/
+	 *  extensions) so toggles survive a reload. */
+	settings?: ClientSettings;
+	/** Named settings presets (prompt + skill/extension toggles combos). */
+	presets?: SettingsPreset[];
 }
 
 /**
@@ -981,6 +1018,44 @@ class ClientStateStore {
 			maxRounds: prefs?.maxRounds ?? 0,
 			locked: prefs?.locked ?? true,
 		};
+		this.save();
+	}
+
+	/** Last-used settings-panel state for a client, or defaults. */
+	getSettings(clientId: string): ClientSettings {
+		const s = this.load()[clientId];
+		return {
+			promptMode: s?.settings?.promptMode === "replace" ? "replace" : "append",
+			customSystemPrompt: s?.settings?.customSystemPrompt ?? "",
+			disabledSkills: s?.settings?.disabledSkills ?? [],
+			disabledExtensions: s?.settings?.disabledExtensions ?? [],
+		};
+	}
+
+	/** Persist the client's settings-panel state (partial merge). */
+	saveSettings(clientId: string, settings: Partial<ClientSettings>): void {
+		const all = this.load();
+		const state = (all[clientId] ??= { projects: [] });
+		const cur = state.settings ?? ({} as ClientSettings);
+		state.settings = {
+			promptMode: settings.promptMode ?? cur.promptMode ?? "append",
+			customSystemPrompt: settings.customSystemPrompt ?? cur.customSystemPrompt ?? "",
+			disabledSkills: settings.disabledSkills ?? cur.disabledSkills ?? [],
+			disabledExtensions: settings.disabledExtensions ?? cur.disabledExtensions ?? [],
+		};
+		this.save();
+	}
+
+	/** Named settings presets for a client (empty if never saved). */
+	getPresets(clientId: string): SettingsPreset[] {
+		return this.load()[clientId]?.presets ?? [];
+	}
+
+	/** Persist the client's named settings presets. */
+	savePresets(clientId: string, presets: SettingsPreset[]): void {
+		const all = this.load();
+		const state = (all[clientId] ??= { projects: [] });
+		state.presets = presets;
 		this.save();
 	}
 }
@@ -1132,6 +1207,20 @@ export class ClientSession {
 	/** Guard: the goal wizard and the review loop are mutually exclusive — a
 	 *  wizard in flight stops review triggers (and vice versa). */
 	private goalWizardRunning = false;
+	/** Settings-panel state (system prompt + disabled skills/extensions). The
+	 *  resource-loader overrides in makeRuntimeFactory() read this at every
+	 *  reload(), so session.reload() applies changes to the running runtime. */
+	private settings: ClientSettings;
+	/** Named settings presets (saved combos the user can re-apply). */
+	private presets: SettingsPreset[] = [];
+	/** Settings changed while the run was streaming — the runtime reload is
+	 *  deferred to the next agent_end so an in-flight run is never torn down. */
+	private pendingSettingsReload = false;
+	/** Full (incl. disabled) skill/extension lists seen so far — disabled
+	 *  entries disappear from the loader after reload, so this cache keeps them
+	 *  visible (and re-enableable) in the settings panel. */
+	private knownSkills = new Map<string, UiSkillInfo>();
+	private knownExtensions = new Map<string, UiExtensionInfo>();
 	/** Aborts the currently-running goal wizard (user clicked ✗ / timed out). Drives
 	 *  the in-flight goal_ask dialog to resolve as cancelled and (via the run
 	 *  signal) stops the wizard session's agent run. Recreated per wizard. */
@@ -1221,6 +1310,8 @@ export class ClientSession {
 		this.cwd = cwd;
 		this.agentDir = agentDir;
 		this.stateStore = stateStore;
+		this.settings = stateStore.getSettings(clientId);
+		this.presets = stateStore.getPresets(clientId);
 	}
 
 	static async create(
@@ -1275,17 +1366,46 @@ export class ClientSession {
 			const services = await createAgentSessionServices({
 				cwd: effectiveCwd,
 				modelRuntime: this.sharedModelRuntime,
-				...(process.platform === "win32"
-					? {
-							// Windows 专属 persona：bash 工具跑 Git Bash 且无默认超时、终端是
-							// 交互式 TTY——注入约束避免 heredoc/交互/长驻命令挂死整个会话；
+				// 设置面板钩子（官方 SDK 的 resourceLoader overrides）：三个 override
+				// 在每次 resourceLoader.reload() 时重放，且读取 this.settings 的当前
+				// 值——因此 session.reload() 即可让系统提示词 / 技能 / 插件开关生效，
+				// 新对话（新 runtime）也会自动带上当前设置。
+				resourceLoaderOptions: {
+					// 系统提示词：replace 模式整体替换；append 模式追加到提示词末尾。
+					systemPromptOverride: (base?: string) =>
+						this.settings.promptMode === "replace" &&
+						this.settings.customSystemPrompt.trim()
+							? this.settings.customSystemPrompt
+							: base,
+					appendSystemPromptOverride: (base: string[]) => {
+						const out = [...base];
+						const custom = this.settings.customSystemPrompt.trim();
+						if (this.settings.promptMode === "append" && custom) {
+							out.push(custom);
+						}
+						if (process.platform === "win32") {
+							// Windows 专属 persona：bash 工具跑 Git Bash 且无默认超时、终端
+							// 是交互式 TTY——注入约束避免 heredoc/交互/长驻命令挂死整个会话；
 							// GBK 老中文文件让模型改用终端按正确编码读（iconv/chcp/Get-Content）。
-							resourceLoaderOptions: {
-								systemPromptOverride: (base?: string) =>
-									base ? `${base}\n\n${WINDOWS_PERSONA}` : WINDOWS_PERSONA,
-							},
-					  }
-					: {}),
+							out.push(WINDOWS_PERSONA);
+						}
+						return out;
+					},
+					// 技能开关：禁用的技能从系统提示词和 /skill: 目录中剔除。
+					skillsOverride: (res) => ({
+						...res,
+						skills: res.skills.filter(
+							(s) => !this.settings.disabledSkills.includes(s.name),
+						),
+					}),
+					// 插件开关：禁用的扩展整个卸载（工具 / 命令随之消失）。
+					extensionsOverride: (res) => ({
+						...res,
+						extensions: res.extensions.filter(
+							(e) => !this.settings.disabledExtensions.includes(extensionKey(e)),
+						),
+					}),
+				},
 			});
 			return {
 				...(await createAgentSessionFromServices({
@@ -1352,6 +1472,9 @@ export class ClientSession {
 		// Reconnect: push the remembered goal prefs (model choice, rounds cap,
 		// locked) so the goal bar restores them on reload — "全局记忆".
 		this.emitGoalStatus();
+		// Reconnect: push the settings panel state (prompt text/mode, skill &
+		// extension toggles, saved presets).
+		this.pushSettings();
 	}
 
 	detachSink(send: (msg: ServerMessage) => void): void {
@@ -1569,6 +1692,13 @@ export class ClientSession {
 					!this.disposed
 				) {
 					void this.runGoalReview(conv);
+				}
+				// Deferred settings reload: settings (system prompt / skills /
+				// extensions) changed while the run was streaming — applying now
+				// would have torn down the in-flight run.
+				if (this.pendingSettingsReload && !this.disposed) {
+					this.pendingSettingsReload = false;
+					void this.applySettingsReload();
 				}
 				break;
 			}
@@ -2566,6 +2696,182 @@ export class ClientSession {
 			// Session not ready yet — native-only catalog still serves the picker.
 		}
 		this.emit({ type: "slash_commands", commands });
+	}
+
+	// ---------------------------------------------------------------------------
+	// Settings (system prompt / skills / extensions / presets)
+	// ---------------------------------------------------------------------------
+
+	/** Push the full settings state (current settings + loaded skills/extensions
+	 *  with enabled flags + saved presets). Pushed on attach and after every
+	 *  settings change. */
+	pushSettings(): void {
+		const disabledSkills = new Set(this.settings.disabledSkills);
+		const disabledExts = new Set(this.settings.disabledExtensions);
+		try {
+			// Refresh the cache with the CURRENTLY loaded set (post-filter).
+			for (const s of this.session.resourceLoader.getSkills().skills) {
+				this.knownSkills.set(s.name, {
+					name: s.name,
+					description: s.description,
+					enabled: true,
+				});
+			}
+			for (const e of this.session.resourceLoader.getExtensions().extensions) {
+				const id = extensionKey(e);
+				const p = e.sourceInfo?.path ?? e.path;
+				this.knownExtensions.set(id, {
+					id,
+					name:
+						e.sourceInfo?.origin === "package" && e.sourceInfo.source
+							? e.sourceInfo.source
+							: basename(p),
+					path: p,
+					enabled: true,
+				});
+			}
+		} catch {
+			// Session not ready yet — keep whatever we already know.
+		}
+		// Disabled entries are filtered out of the loader — keep them in the
+		// panel (with the last-known description) so they can be re-enabled.
+		for (const name of this.settings.disabledSkills) {
+			if (!this.knownSkills.has(name)) {
+				this.knownSkills.set(name, { name, description: "", enabled: false });
+			}
+		}
+		for (const id of this.settings.disabledExtensions) {
+			if (!this.knownExtensions.has(id)) {
+				this.knownExtensions.set(id, {
+					id,
+					name: id.startsWith("npm:") ? id : basename(id),
+					path: "",
+					enabled: false,
+				});
+			}
+		}
+		const skills = [...this.knownSkills.values()]
+			.map((s) => ({ ...s, enabled: !disabledSkills.has(s.name) }))
+			.sort((a, b) => a.name.localeCompare(b.name));
+		const extensions = [...this.knownExtensions.values()]
+			.map((e) => ({ ...e, enabled: !disabledExts.has(e.id) }))
+			.sort((a, b) => a.name.localeCompare(b.name));
+		this.emit({
+			type: "settings_state",
+			settings: {
+				promptMode: this.settings.promptMode,
+				customSystemPrompt: this.settings.customSystemPrompt,
+				disabledSkills: [...this.settings.disabledSkills],
+				disabledExtensions: [...this.settings.disabledExtensions],
+				skills,
+				extensions,
+				presets: this.presets.map((p) => ({ ...p })),
+			} satisfies UiSettingsState,
+		});
+	}
+
+	/** Persist + apply a partial settings update (prompt text/mode, toggles). */
+	async setSettings(partial: {
+		promptMode?: PromptMode;
+		customSystemPrompt?: string;
+		disabledSkills?: string[];
+		disabledExtensions?: string[];
+	}): Promise<void> {
+		if (partial.promptMode !== undefined) this.settings.promptMode = partial.promptMode;
+		if (partial.customSystemPrompt !== undefined) {
+			this.settings.customSystemPrompt = partial.customSystemPrompt;
+		}
+		if (partial.disabledSkills !== undefined) {
+			this.settings.disabledSkills = partial.disabledSkills;
+		}
+		if (partial.disabledExtensions !== undefined) {
+			this.settings.disabledExtensions = partial.disabledExtensions;
+		}
+		this.stateStore.saveSettings(this.clientId, this.settings);
+		this.pushSettings();
+		await this.applyRuntimeSettings();
+	}
+
+	/** Save the CURRENT settings as a named preset (overwrites if exists). */
+	async savePreset(name: string): Promise<void> {
+		const n = name.trim();
+		if (!n) {
+			this.emit({ type: "notice", level: "error", text: "预设名称不能为空" });
+			return;
+		}
+		const preset: SettingsPreset = {
+			name: n,
+			promptMode: this.settings.promptMode,
+			customSystemPrompt: this.settings.customSystemPrompt,
+			disabledSkills: [...this.settings.disabledSkills],
+			disabledExtensions: [...this.settings.disabledExtensions],
+		};
+		const existing = this.presets.findIndex((p) => p.name === n);
+		if (existing >= 0) this.presets[existing] = preset;
+		else this.presets.push(preset);
+		this.stateStore.savePresets(this.clientId, this.presets);
+		this.pushSettings();
+	}
+
+	/** Replace the current settings with the named preset and apply it. */
+	async applyPreset(name: string): Promise<void> {
+		const p = this.presets.find((x) => x.name === name);
+		if (!p) {
+			this.emit({ type: "notice", level: "error", text: `预设不存在：${name}` });
+			return;
+		}
+		this.settings = {
+			promptMode: p.promptMode,
+			customSystemPrompt: p.customSystemPrompt,
+			disabledSkills: [...p.disabledSkills],
+			disabledExtensions: [...p.disabledExtensions],
+		};
+		this.stateStore.saveSettings(this.clientId, this.settings);
+		this.pushSettings();
+		await this.applyRuntimeSettings();
+	}
+
+	/** Remove a named preset. */
+	async deletePreset(name: string): Promise<void> {
+		this.presets = this.presets.filter((p) => p.name !== name);
+		this.stateStore.savePresets(this.clientId, this.presets);
+		this.pushSettings();
+	}
+
+	/**
+	 * Make settings changes effective in the running runtime. The resource-loader
+	 * overrides read this.settings at call time, so a reload re-applies them.
+	 * Reloading mid-stream would tear down the in-flight run — defer instead.
+	 */
+	private async applyRuntimeSettings(): Promise<void> {
+		if (this.disposed) return;
+		if (this.session.isStreaming) {
+			this.pendingSettingsReload = true;
+			this.emit({
+				type: "notice",
+				level: "info",
+				text: "当前回复进行中，设置将在回复结束后自动应用",
+			});
+			return;
+		}
+		await this.applySettingsReload();
+	}
+
+	/** session.reload() + refresh the slash-command catalog + push state. */
+	private async applySettingsReload(): Promise<void> {
+		try {
+			await this.session.reload();
+			await this.pushSlashCommands();
+			this.pushSettings();
+			this.flushSnapshot();
+			this.emit({ type: "notice", level: "info", text: "设置已应用" });
+		} catch (err) {
+			this.emit({
+				type: "notice",
+				level: "error",
+				text: `设置应用失败：${(err as Error).message}`,
+			});
+		}
 	}
 
 	// ---------------------------------------------------------------------------

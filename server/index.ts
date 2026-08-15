@@ -392,6 +392,26 @@ wss.on("connection", (ws) => {
 					locked: msg.locked,
 				});
 				break;
+			case "get_settings":
+				cs.pushSettings();
+				break;
+			case "set_settings":
+				void cs.setSettings({
+					promptMode: msg.promptMode,
+					customSystemPrompt: msg.customSystemPrompt,
+					disabledSkills: msg.disabledSkills,
+					disabledExtensions: msg.disabledExtensions,
+				});
+				break;
+			case "save_preset":
+				void cs.savePreset(msg.name);
+				break;
+			case "apply_preset":
+				void cs.applyPreset(msg.name);
+				break;
+			case "delete_preset":
+				void cs.deletePreset(msg.name);
+				break;
 			default:
 				break;
 		}
