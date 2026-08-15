@@ -133,7 +133,7 @@ export function SettingsModal({ chat, send, onClose }: SettingsModalProps) {
 					</div>
 					<textarea
 						className="set-prompt-input"
-						rows={4}
+						rows={6}
 						placeholder={t("promptPlaceholder")}
 						value={promptDraft}
 						onFocus={() => (promptFocus.current = true)}
@@ -218,7 +218,7 @@ export function SettingsModal({ chat, send, onClose }: SettingsModalProps) {
 						/>
 						<button
 							type="button"
-							className="dd-refresh accent"
+							className="set-save-btn"
 							disabled={!presetName.trim()}
 							onClick={() => {
 								send({ type: "save_preset", name: presetName.trim() });
