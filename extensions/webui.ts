@@ -76,17 +76,25 @@ function parseArgs(args: string): { port?: number; cwd?: string; noBrowser: bool
 /** 打开浏览器 */
 async function openBrowser(url: string): Promise<void> {
 	const { platform } = process;
-	const cmd =
+	const [cmd, ...rest] =
 		platform === "darwin"
 			? ["open", url]
 			: platform === "win32"
 				? ["cmd", "/c", "start", "", url]
 				: ["xdg-open", url];
-	try {
-		spawn(cmd[0], cmd.slice(1), { stdio: "ignore", detached: true }).unref();
-	} catch {
-		/* 忽略打开失败（headless 等场景） */
-	}
+	// 无界面环境缺少 xdg-open 等打开器时，ENOENT 以异步 'error' 事件触发，
+	// try/catch 拦不住会崩掉整个进程 —— 必须挂 error 监听。
+	spawn(cmd, rest, { stdio: "ignore", detached: true })
+		.on("error", (err) => {
+			if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+				console.warn(
+					`[webui] 未找到浏览器打开器 (${(err as NodeJS.ErrnoException).path || "command not found"})，请用 --no-browser 关闭自动打开`
+				);
+			} else {
+				console.warn("[webui] 打开浏览器失败:", err.message);
+			}
+		})
+		.unref();
 }
 
 export default function (pi: ExtensionAPI): void {

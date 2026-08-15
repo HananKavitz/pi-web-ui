@@ -172,12 +172,24 @@ function parseFlags(argv) {
 
 /** Open a URL in the OS default browser; failures are ignored (best-effort). */
 function openBrowser(url) {
+	let res;
 	if (isMac) {
-		spawnSync("open", [url], { stdio: "ignore" });
+		res = spawnSync("open", [url], { stdio: "ignore" });
 	} else if (isWin) {
-		spawnSync("cmd", ["/c", "start", "", url], { stdio: "ignore" });
+		res = spawnSync("cmd", ["/c", "start", "", url], { stdio: "ignore" });
 	} else {
-		spawnSync("xdg-open", [url], { stdio: "ignore" });
+		res = spawnSync("xdg-open", [url], { stdio: "ignore" });
+	}
+	// spawnSync 不抛异常：命令缺失（headless 服务器）时在返回对象里带 error 字段。
+	if (res?.error) {
+		if (res.error.code === "ENOENT") {
+			console.warn(
+				`[browser] 未找到打开器 (${res.error.path || "command not found"})，` +
+					"headless 服务器可用 --no-browser 关闭自动打开"
+			);
+		} else {
+			console.warn("[browser] 打开浏览器失败:", res.error.message);
+		}
 	}
 }
 
