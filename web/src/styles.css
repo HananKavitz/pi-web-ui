@@ -1400,6 +1400,364 @@ body {
 	background: var(--red-soft);
 }
 
+/* ------------------------------------------------------- source control (Git) */
+
+.scm-view {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	background: var(--bg-elev);
+}
+
+.scm-header {
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 10px 14px;
+	border-bottom: 1px solid var(--border-soft);
+}
+
+.scm-title-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.scm-title {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.6px;
+	text-transform: uppercase;
+	color: var(--text-faint);
+}
+.scm-title svg {
+	color: var(--accent);
+}
+
+.scm-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+/* 一行里的控件（分支 chip / 下拉 / 按钮 / 提交输入框）统一高度，对齐整齐。 */
+.scm-row .btn,
+.scm-row .scm-select,
+.scm-row .scm-commit-input,
+.scm-row .scm-branch-current {
+	height: 34px;
+}
+
+.scm-branch-current {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-family: var(--mono);
+	font-size: 13px;
+	color: var(--text);
+	background: var(--bg-elev2);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	padding: 4px 10px;
+	max-width: 260px;
+	overflow: hidden;
+}
+.scm-branch-current svg {
+	color: var(--accent);
+	flex-shrink: 0;
+}
+.scm-upstream {
+	color: var(--text-faint);
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+.scm-select {
+	flex: 0 1 auto;
+	min-width: 120px;
+	max-width: 200px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-elev2);
+	color: var(--text);
+	font-size: 13px;
+	padding: 0 8px;
+}
+.scm-select:focus {
+	outline: none;
+	border-color: var(--accent);
+}
+
+.scm-commit-input {
+	flex: 1;
+	min-width: 140px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-elev2);
+	color: var(--text);
+	font-size: 13px;
+	padding: 0 10px;
+}
+.scm-commit-input:focus {
+	outline: none;
+	border-color: var(--accent);
+}
+.scm-commit-input::placeholder {
+	color: var(--text-faint);
+}
+
+.scm-body {
+	flex: 1;
+	display: flex;
+	min-width: 0;
+	min-height: 0;
+}
+
+.scm-files {
+	width: 300px;
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	border-right: 1px solid var(--border-soft);
+}
+
+.scm-files-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 12px;
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.4px;
+	color: var(--text-faint);
+	border-bottom: 1px solid var(--border-soft);
+}
+.scm-files-count {
+	font-family: var(--mono);
+	font-size: 11px;
+	color: var(--text-dim);
+	background: var(--bg-elev2);
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	padding: 0 7px;
+}
+
+.scm-files-list {
+	flex: 1;
+	overflow-y: auto;
+	min-height: 0;
+}
+
+.scm-file {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 5px 10px;
+	font-size: 13px;
+	cursor: pointer;
+	border-left: 2px solid transparent;
+}
+.scm-file:hover {
+	background: var(--accent-soft);
+}
+.scm-file.active {
+	background: var(--accent-soft);
+	border-left-color: var(--accent);
+}
+
+.scm-file-xy {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 13px;
+	height: 18px;
+	font-family: var(--mono);
+	font-size: 11px;
+	font-weight: 700;
+	flex-shrink: 0;
+}
+.scm-file-xy.x {
+	color: var(--green);
+}
+.scm-file-xy.y {
+	color: var(--red);
+}
+.scm-file-xy.q {
+	color: var(--amber);
+}
+
+.scm-file-path {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--mono);
+	font-size: 12.5px;
+	color: var(--text);
+}
+
+.scm-file-stat {
+	font-family: var(--mono);
+	font-size: 11px;
+	flex-shrink: 0;
+}
+.scm-file-stat .add {
+	color: var(--green);
+}
+.scm-file-stat .del {
+	color: var(--red);
+}
+
+.scm-empty {
+	padding: 26px 16px;
+	text-align: center;
+	color: var(--text-faint);
+	font-size: 13px;
+}
+
+.scm-diff {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	background: var(--bg);
+}
+
+.scm-diff-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 14px;
+	border-bottom: 1px solid var(--border-soft);
+	font-family: var(--mono);
+	font-size: 12.5px;
+	color: var(--text-dim);
+	background: var(--bg-elev);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.scm-diff-loading {
+	color: var(--text-faint);
+	font-size: 11px;
+	flex-shrink: 0;
+}
+
+.scm-diff-body {
+	flex: 1;
+	overflow: auto;
+	min-height: 0;
+	padding: 6px 0 12px;
+}
+
+.scm-diff-section {
+	padding: 8px 14px 4px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.4px;
+	text-transform: uppercase;
+	color: var(--text-faint);
+}
+
+.scm-diff-pre {
+	margin: 0;
+	font-family: var(--mono);
+	font-size: 12.5px;
+	line-height: 1.55;
+}
+
+.scm-diff-line {
+	padding: 0 14px;
+	white-space: pre-wrap;
+	word-break: break-word;
+	color: var(--text-dim);
+}
+.scm-diff-line.hdr {
+	color: var(--text-faint);
+}
+.scm-diff-line.hunk {
+	color: var(--accent);
+	background: var(--accent-soft);
+}
+.scm-diff-line.add {
+	color: var(--green);
+	background: var(--green-soft);
+}
+.scm-diff-line.del {
+	color: var(--red);
+	background: var(--red-soft);
+}
+
+.scm-error {
+	margin: 10px 14px;
+	padding: 8px 12px;
+	border: 1px solid var(--red-soft);
+	border-radius: 8px;
+	background: var(--red-soft);
+	color: var(--red);
+	font-size: 12.5px;
+}
+
+.scm-hint {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 14px;
+	font-size: 12px;
+	color: var(--text-faint);
+	border-top: 1px solid var(--border-soft);
+}
+.scm-hint svg {
+	flex-shrink: 0;
+}
+
+.scm-goto-term {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	margin-left: auto;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-elev2);
+	color: var(--text-dim);
+	font-size: 12px;
+	padding: 3px 10px;
+	cursor: pointer;
+}
+.scm-goto-term:hover {
+	color: var(--accent);
+	border-color: var(--accent);
+}
+
+.scm-spin {
+	animation: spin 0.8s linear infinite;
+}
+
+/* Narrow screens: shrink the files column so the diff keeps usable width. */
+@media (max-width: 768px) {
+	.scm-files {
+		width: 200px;
+	}
+	.scm-branch-current {
+		max-width: 150px;
+	}
+	.scm-select {
+		min-width: 90px;
+	}
+}
+
 /* ------------------------------------------------------------------ statusbar */
 
 .statusbar {
@@ -1617,66 +1975,183 @@ body {
 	min-width: 0;
 }
 
-/* Global interrupt button — prominent red stop, shown in the top bar while a
-   run is streaming so a hung command can always be stopped (even when the
-   input bar is scrolled off screen). */
-.topbar .btn.interrupt {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	height: 28px;
-	padding: 0 12px;
-	border: 1px solid var(--red);
-	border-radius: 6px;
-	background: var(--red);
-	color: #fff;
-	font-size: 12.5px;
-	font-weight: 600;
-	cursor: pointer;
-	white-space: nowrap;
-	/* hover 用 background 变化而不是 filter——filter 会创建 stacking
-	   context，把 tooltip（按钮子元素）的 z-index 关在按钮内部，导致
-	   悬浮提示被消息区/bash 卡片盖住。 */
-	transition: background 0.15s;
-}
-.topbar .btn.interrupt:hover:not(:disabled) {
-	background: #d64545;
-}
+	/* Background-task chip + badge — AI-started servers. The chip is a plain
+	   .chip; only the counter badge needs bespoke styling. */
+	.bg-task-chip { position: relative; }
+	.bg-task-badge {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 17px;
+		height: 17px;
+		padding: 0 5px;
+		border-radius: 9px;
+		background: var(--red);
+		color: #fff;
+		font-size: 10.5px;
+		font-weight: 700;
+		line-height: 1;
+	}
+	.dd-item .bg-task-badge { font-style: normal; margin-left: 6px; }
 
-/* Clear multi-line hover hint for the global interrupt button — same visual
-   language and stacking as the dd-menu (model/thinking) popups. */
-.topbar .btn.interrupt[data-tip] {
-	position: relative;
-}
-.topbar .btn.interrupt[data-tip]::after {
-	content: attr(data-tip);
-	position: absolute;
-	top: calc(100% + 8px);
-	right: 0;
-	background: var(--bg-elev2);
-	color: var(--text);
-	border: 1px solid var(--border);
-	border-radius: 10px;
-	padding: 8px 12px;
-	font-size: 11px;
-	line-height: 1.5;
-	white-space: pre-line;
-	/* 比按钮宽得多（min-width 保证），内容再长最多 420px */
-	min-width: 240px;
-	max-width: 420px;
-	text-align: left;
-	pointer-events: none;
-	opacity: 0;
-	transition: opacity 0.09s ease;
-	/* 与 dd-menu 同级（60）+，且不再被按钮的 stacking context 限制 */
-	z-index: 10000;
-	box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-}
-.topbar .btn.interrupt[data-tip]:hover::after {
-	opacity: 1;
-}
+	/* ---- 后台任务面板 (BgTasksModal) ---- */
+	.bg-task-modal {
+		position: fixed;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		width: min(460px, calc(100vw - 32px));
+		max-height: min(560px, calc(100vh - 80px));
+		display: flex;
+		flex-direction: column;
+		background: var(--bg-elev2);
+		border: 1px solid var(--border);
+		border-radius: 14px;
+		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+		z-index: 400;
+	}
+	.bg-task-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 14px 16px;
+		border-bottom: 1px solid var(--border);
+	}
+	.bg-task-title {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--text);
+	}
+	.bg-task-count {
+		font-style: normal;
+		font-size: 11px;
+		font-weight: 700;
+		color: var(--amber);
+		background: rgba(255, 193, 7, 0.12);
+		border-radius: 9px;
+		padding: 1px 7px;
+	}
+	.bg-task-empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 8px;
+		padding: 40px 16px;
+		color: var(--text-dim);
+		font-size: 13px;
+	}
+	.bg-task-empty svg { font-size: 26px; opacity: 0.5; }
+	.bg-task-empty small { font-size: 11.5px; opacity: 0.7; text-align: center; }
+	.bg-task-list {
+		list-style: none;
+		margin: 0;
+		padding: 6px 0;
+		overflow-y: auto;
+		flex: 1;
+		min-height: 0;
+	}
+	.bg-task-item {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 9px 16px;
+		border-bottom: 1px solid var(--border-subtle, var(--border));
+	}
+	.bg-task-item:last-child { border-bottom: none; }
+	.bg-task-icon {
+		flex: none;
+		width: 9px;
+		height: 9px;
+		border-radius: 50%;
+		background: var(--green);
+		box-shadow: 0 0 8px rgba(76, 175, 80, 0.55);
+		font-size: 0;
+	}
+	.bg-task-info { flex: 1; min-width: 0; }
+	.bg-task-line1 {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 13px;
+		color: var(--text);
+	}
+	.bg-task-port {
+		font-family: var(--mono, ui-monospace, monospace);
+		font-weight: 700;
+		color: var(--accent);
+	}
+	.bg-task-name {
+		font-size: 11.5px;
+		color: var(--text-dim);
+		background: var(--bg-elev3, rgba(255, 255, 255, 0.06));
+		border-radius: 4px;
+		padding: 1px 6px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.bg-task-line2 {
+		display: flex;
+		gap: 12px;
+		margin-top: 2px;
+		font-size: 11px;
+		color: var(--text-dim);
+	}
+	.bg-task-stop {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		height: 26px;
+		padding: 0 10px;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		font-size: 12px;
+		color: var(--text);
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+	.bg-task-stop:hover:not(:disabled) {
+		border-color: var(--red);
+		color: #fff;
+		background: var(--red);
+	}
+	.bg-task-foot {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+		padding: 12px 16px;
+		border-top: 1px solid var(--border);
+	}
+	.bg-task-stopall {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 30px;
+		padding: 0 14px;
+		border: 1px solid var(--red);
+		border-radius: 7px;
+		background: transparent;
+		color: var(--red);
+		font-size: 12.5px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+	.bg-task-stopall:hover:not(:disabled) {
+		background: var(--red);
+		color: #fff;
+	}
+	.bg-task-stopall:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
 
-/* Desktop-only toolbar block (model/thinking/sound/lang/update/github).
+	/* Desktop-only toolbar block (model/thinking/sound/lang/update/github).
    On phones it is replaced by the single "⋯" button (.topbar-more). */
 .topbar-desktop {
 	display: flex;
@@ -1999,40 +2474,109 @@ body {
 
 /* ----------------------------------------------------------------- notices */
 
-.notices {
-	position: fixed;
-	top: 52px;
-	left: 50%;
-	transform: translateX(-50%);
-	z-index: 50;
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
-	align-items: center;
-	pointer-events: none;
-}
+	.notices {
+		position: fixed;
+		/* 靠下：浮在输入框与底栏上方（不挡输入），不再贴顶 */
+		bottom: 112px;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 50;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		align-items: center;
+		pointer-events: none;
+	}
 
-.notice {
-	pointer-events: auto;
-	max-width: min(720px, 90vw);
-	padding: 7px 14px;
-	border-radius: 8px;
-	border: 1px solid var(--border);
-	background: var(--bg-elev2);
-	color: var(--text);
-	font-size: 12.5px;
-	box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
-	cursor: pointer;
-	text-align: center;
-}
-.notice-error {
-	border-color: rgba(248, 113, 113, 0.5);
-	color: #fca5a5;
-}
-.notice-warning {
-	border-color: rgba(251, 191, 36, 0.5);
-	color: #fcd34d;
-}
+	.notice {
+		pointer-events: auto;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		max-width: min(760px, 92vw);
+		padding: 10px 12px 10px 14px;
+		border-radius: 10px;
+		border: 1px solid var(--border);
+		/* 等级色左条：一眼看出级别 */
+		border-left: 3px solid var(--accent);
+		background: var(--bg-elev2);
+		color: var(--text);
+		font-size: 13px;
+		font-weight: 600;
+		line-height: 1.5;
+		text-align: left;
+		box-shadow: 0 10px 36px rgba(0, 0, 0, 0.55);
+		animation: notice-in 0.18s ease;
+	}
+	@keyframes notice-in {
+		from {
+			opacity: 0;
+			transform: translateY(-6px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+	/* 悬浮中：计时暂停、通知一直显示——边框高亮给出反馈 */
+	.notice.paused {
+		border-color: var(--accent);
+		box-shadow: 0 0 0 1px var(--accent), 0 14px 44px rgba(0, 0, 0, 0.65);
+	}
+	.notice-icon {
+		flex: none;
+		font-size: 15px;
+		line-height: 1;
+	}
+	.notice-text {
+		flex: 1;
+		min-width: 0;
+	}
+	.notice-close {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 20px;
+		height: 20px;
+		border: none;
+		border-radius: 5px;
+		background: transparent;
+		color: var(--text-dim);
+		cursor: pointer;
+		font-size: 13px;
+	}
+	.notice-close:hover {
+		background: rgba(255, 255, 255, 0.12);
+		color: var(--text);
+	}
+	.notice-error {
+		border-color: rgba(248, 113, 113, 0.55);
+		border-left-color: #ef4444;
+		color: #fca5a5;
+		background: rgba(127, 29, 29, 0.38);
+	}
+	.notice-error .notice-icon {
+		color: #f87171;
+	}
+	.notice-warning {
+		border-color: rgba(251, 191, 36, 0.5);
+		border-left-color: #f59e0b;
+		color: #fcd34d;
+		background: rgba(120, 53, 15, 0.32);
+	}
+	.notice-warning .notice-icon {
+		color: #fbbf24;
+	}
+	.notice-info {
+		border-color: rgba(96, 165, 250, 0.45);
+		border-left-color: #3b82f6;
+		color: var(--text);
+		background: rgba(30, 64, 175, 0.22);
+	}
+	.notice-info .notice-icon {
+		color: #60a5fa;
+	}
 
 /* ------------------------------------------------------------ message list */
 

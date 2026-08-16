@@ -18,6 +18,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+// MUST run before node-pty is required: rewrites the installed node-pty copies
+// so their worker/agent handlers tolerate Node `--watch`'s IPC traffic (see the
+// module itself for details).
+import "./patch-node-pty.js";
 import { spawn, type IPty } from "node-pty";
 import type { CommandDef, ServerMessage } from "./protocol.js";
 
@@ -200,6 +204,25 @@ function shellEnv(): Record<string, string> {
 	if (!env.LANG && !env.LC_ALL) env.LANG = "en_US.UTF-8";
 	return env;
 }
+
+// ---------------------------------------------------------------------------
+// node-pty ConoutConnection warning noise (Node --watch)
+// ---------------------------------------------------------------------------
+// node-pty's ConoutConnection warns about every unknown message from its ConPTY
+// worker thread. Under `node --watch` (the dev server: `node --watch --import
+// tsx`), Node's watch mode pushes `watch:require` / `watch:import` messages over
+// the worker's message channel to track module dependencies; node-pty doesn't
+// recognize them and logs one `Unexpected ConoutWorkerMessage { … }` per message
+// — hundreds of lines per terminal (the SCM panel's hidden query PTY triggers it
+// on every git-view open). The messages are harmless: the worker only ever sends
+// its READY sentinel, which the handler does process. Filter that exact warning
+// at the console boundary so dev output stays readable. Production runs without
+// --watch and never produces these.
+const originalWarn = console.warn.bind(console);
+console.warn = (...args: unknown[]) => {
+	if (args[0] === "Unexpected ConoutWorkerMessage") return;
+	originalWarn(...args);
+};
 
 // ---------------------------------------------------------------------------
 // spawn-helper permission repair (node-pty macOS prebuilds)

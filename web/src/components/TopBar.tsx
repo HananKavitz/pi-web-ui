@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
 	FiDownload,
 	FiFolder,
+	FiGitBranch,
 	FiGithub,
 	FiGlobe,
 	FiMenu,
@@ -9,7 +10,7 @@ import {
 	FiMoreHorizontal,
 	FiPlus,
 	FiSettings,
-	FiSquare,
+	FiLayers,
 	FiTerminal,
 	FiVolume2,
 } from "react-icons/fi";
@@ -24,7 +25,7 @@ interface TopBarProps {
 	chat: ChatState;
 	send: (
 		msg:
-			| { type: "abort" }
+			| { type: "list_models" }
 			| { type: "list_models" }
 			| { type: "set_model"; modelId: string }
 			| { type: "set_thinking"; level: string }
@@ -33,14 +34,16 @@ interface TopBarProps {
 			| { type: "check_update" }
 			| { type: "update_app" },
 	) => boolean;
-	view: "chat" | "terminal";
-	onViewChange: (view: "chat" | "terminal") => void;
+	view: "chat" | "terminal" | "git";
+	onViewChange: (view: "chat" | "terminal" | "git") => void;
 	/** Open a side panel as a mobile drawer ("left" = history, "right" = files). */
 	onOpenPanel: (side: "left" | "right") => void;
 	/** Open the custom model config panel. */
 	onManageModels: () => void;
 	/** Open the settings panel (system prompt / skills / extensions / presets). */
 	onOpenSettings: () => void;
+	/** Open the background-task panel (AI-started servers — stop individually or all). */
+	onOpenBgTasks: () => void;
 	/** Sound notification settings + change handler (owned by App). */
 	sound: SoundSettings;
 	onSoundChange: (settings: SoundSettings) => void;
@@ -55,12 +58,12 @@ export function TopBar({
 	onOpenPanel,
 	onManageModels,
 	onOpenSettings,
+	onOpenBgTasks,
 	sound,
 	onSoundChange,
 	onSoundPreview,
 }: TopBarProps) {
 	const { locale, setLocale, t } = useI18n();
-	const state = chat.state;
 	const [soundOpen, setSoundOpen] = useState(false);
 	const [langOpen, setLangOpen] = useState(false);
 	const [updateOpen, setUpdateOpen] = useState(false);
@@ -185,21 +188,6 @@ export function TopBar({
 			</div>
 
 			<div className="topbar-actions">
-				{/* Global interrupt — shown only WHILE a run is streaming (a hung
-				    run can always be stopped, even when the input bar is scrolled
-				    off screen). For a single stuck command use the 停止 button on
-				    its bash card (conversation continues). */}
-				{state?.isStreaming && (
-					<button
-						type="button"
-						className="btn interrupt active"
-						data-tip={t("interruptTip")}
-						onClick={() => send({ type: "abort" })}
-					>
-						<FiSquare />
-						<span>{t("interrupt")}</span>
-					</button>
-				)}
 				<div
 					className="view-switch"
 					role="tablist"
@@ -225,11 +213,35 @@ export function TopBar({
 						<FiTerminal />
 						<span>{t("terminal")}</span>
 					</button>
+					<button
+						type="button"
+						role="tab"
+						aria-selected={view === "git"}
+						className={view === "git" ? "active" : ""}
+						onClick={() => onViewChange("git")}
+					>
+						<FiGitBranch />
+						<span>{t("scmTab")}</span>
+					</button>
 				</div>
 
 				{/* Desktop toolbar — hidden on mobile (model/thinking move into the
 				    input row; sound/lang/update/github fold into "⋯" below). */}
 				<div className="topbar-desktop">
+					{/* Background tasks — AI-started servers still listening. Always shown
+					    so the list survives the conversation that started them (badge = count). */}
+					<button
+						type="button"
+						className="chip bg-task-chip"
+						data-tip={t("bgTasksTip")}
+						onClick={onOpenBgTasks}
+					>
+						<FiLayers />
+						<span className="chip-sub">{t("bgTasks")}</span>
+						{chat.bgServers.length > 0 && (
+							<span className="bg-task-badge">{chat.bgServers.length}</span>
+						)}
+					</button>
 					<ModelThinking
 						chat={chat}
 						send={send}
@@ -371,6 +383,17 @@ export function TopBar({
 							}}
 						>
 							<FiSettings /> {t("settingsTitle")}
+						</DropdownItem>
+						<DropdownItem
+							onClick={() => {
+								setMoreOpen(false);
+								onOpenBgTasks();
+							}}
+						>
+							<FiLayers /> {t("bgTasks")}
+							{chat.bgServers.length > 0 && (
+								<em className="bg-task-badge">{chat.bgServers.length}</em>
+							)}
 						</DropdownItem>
 						<SoundSettingsPanel
 							settings={sound}

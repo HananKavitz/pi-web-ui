@@ -41,20 +41,21 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type {
-	CommandDef,
-	ConversationSummary,
-	FileEntry,
-	GoalStatus,
-	ProjectSummary,
-	ServerMessage,
-	SessionSummary,
-	SlashCommandInfo,
-	UiExtensionInfo,
-	UiMessage,
-	UiProviderConfig,
-	UiSettingsState,
-	UiSkillInfo,
-	UiState,
+		BgServer,
+		CommandDef,
+		ConversationSummary,
+		FileEntry,
+		GoalStatus,
+		ProjectSummary,
+		ServerMessage,
+		SessionSummary,
+		SlashCommandInfo,
+		UiExtensionInfo,
+		UiMessage,
+		UiProviderConfig,
+		UiSettingsState,
+		UiSkillInfo,
+		UiState,
 } from "./protocol.js";
 import {
 	serializeMessage,
@@ -411,6 +412,39 @@ function killPidTree(pid: number): void {
 		}
 	} catch {
 		// already dead
+	}
+}
+
+/** Best-effort process name for a pid (tasklist on win32, ps on POSIX).
+ *  Returns undefined when the process is gone or the lookup fails. */
+async function lookupProcessName(pid: number): Promise<string | undefined> {
+	try {
+		const { execFile } = await import("node:child_process");
+		if (process.platform === "win32") {
+			const out = await new Promise<string>((resolve, reject) =>
+				execFile(
+					"tasklist",
+					["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"],
+					{ windowsHide: true, timeout: 4000 },
+					(err, stdout) => (err ? reject(err) : resolve(stdout)),
+				),
+			);
+			// CSV: "node.exe","12345",...
+			const m = out.match(/"([^"]+)"/);
+			return m ? m[1] : undefined;
+		}
+		const out = await new Promise<string>((resolve, reject) =>
+			execFile(
+				"ps",
+				["-o", "comm=", "-p", String(pid)],
+				{ timeout: 4000 },
+				(err, stdout) => (err ? reject(err) : resolve(stdout)),
+			),
+		);
+		const name = out.trim();
+		return name || undefined;
+	} catch {
+		return undefined;
 	}
 }
 
@@ -1251,8 +1285,15 @@ export class ClientSession {
 	 *  end-of-execution diff reveals servers the agent left running in the
 	 *  background (e.g. `npm run dev &`). Keyed by port → pid. */
 	private bashListenBefore: Map<number, number> | null = null;
-	/** Background servers the agent started (port → pid). 「中断」kills them. */
-	private bgServers = new Map<number, { pid: number; since: number }>();
+	/** Background servers the agent started (port → pid). Managed from the
+	 *  后台任务 panel: each can be stopped individually or all at once. The
+	 *  map lives on the CLIENT (not a conversation), so it survives
+	 *  conversation switches/ends and only empties when a task is stopped or
+	 *  its process exits on its own (pruned by refreshBgServers). */
+	private bgServers = new Map<number, { pid: number; since: number; name?: string }>();
+	/** Periodic pruner: re-snapshots listening ports and drops tracked entries
+	 *  whose process died on its own, keeping the panel honest. */
+	private bgTimer: ReturnType<typeof setInterval> | null = null;
 
 	/** The active conversation (all session operations target it). */
 	private get conv(): Conversation {
@@ -1312,6 +1353,10 @@ export class ClientSession {
 		this.stateStore = stateStore;
 		this.settings = stateStore.getSettings(clientId);
 		this.presets = stateStore.getPresets(clientId);
+		// Prune dead background tasks every 30s (only spawns netstat/lsof while
+		// the list is non-empty). unref: must not keep the process alive.
+		this.bgTimer = setInterval(() => void this.refreshBgServers(), 30_000);
+		this.bgTimer.unref?.();
 	}
 
 	static async create(
@@ -1475,6 +1520,9 @@ export class ClientSession {
 		// Reconnect: push the settings panel state (prompt text/mode, skill &
 		// extension toggles, saved presets).
 		this.pushSettings();
+		// Reconnect: push the background-task list — it must survive reconnects
+		// and outlive the conversation that started the tasks.
+		this.emitBgServers();
 	}
 
 	detachSink(send: (msg: ServerMessage) => void): void {
@@ -3393,17 +3441,9 @@ export class ClientSession {
 	 * overnight. The notice fires only on the forced-reset path.
 	 */
 	async abort(): Promise<void> {
+		// 只停止智能体运行本身；AI 在后台启动的服务由「后台任务」面板单独
+		// 管理（可逐个停止或全部关闭），不会在停止对话时被连带杀掉。
 		await this.interruptRun(this.conv, "已停止");
-		// 中断同时清理 AI 在后台启动的服务（npm run dev & 等）——避免用户
-		// 测试时发现端口被占用而不知道是什么进程。
-		const killed = await this.killBackgroundServers();
-		if (killed.length > 0) {
-			this.emit({
-				type: "notice",
-				level: "info",
-				text: `已停止 AI 后台服务：端口 ${killed.join("、")}（进程已结束）`,
-			});
-		}
 		this.flushSnapshot();
 	}
 
@@ -3416,20 +3456,95 @@ export class ClientSession {
 		if (!before) return;
 		await new Promise((r) => setTimeout(r, 1500));
 		const after = await snapshotListeningPorts();
+		let added = false;
 		for (const [port, pid] of after) {
 			if (!before.has(port) && !this.bgServers.has(port)) {
 				this.bgServers.set(port, { pid, since: Date.now() });
+				added = true;
+				// Best-effort process name so the panel shows something readable.
+				void lookupProcessName(pid).then((name) => {
+					const cur = this.bgServers.get(port);
+					if (cur && cur.pid === pid && name) {
+						cur.name = name;
+						this.emitBgServers();
+					}
+				});
 				this.emit({
 					type: "notice",
 					level: "info",
-					text: `检测到 AI 启动的后台服务：端口 ${port}（pid ${pid}）——点顶栏「中断」可停止`,
+					text: `检测到 AI 启动的后台服务：端口 ${port}（pid ${pid}）——可在顶栏「后台任务」里单独停止或全部关闭`,
 				});
 			}
 		}
+		if (added) this.emitBgServers();
+	}
+
+	/** The current background-server list, oldest first. */
+	private bgServerList(): BgServer[] {
+		return [...this.bgServers.entries()]
+			.map(([port, v]) => ({
+				port,
+				pid: v.pid,
+				since: v.since,
+				...(v.name ? { name: v.name } : {}),
+			}))
+			.sort((a, b) => a.since - b.since);
+	}
+
+	/** Push the current background-task list to every connected socket. */
+	private emitBgServers(): void {
+		this.emit({ type: "bg_servers", servers: this.bgServerList() });
+	}
+
+	/** Re-snapshot listening ports and drop tracked entries that are no longer
+	 *  listening — the process exited on its own, so it must leave the panel.
+	 *  Port AND pid must both match: a port reused by an unrelated process is
+	 *  not our server anymore. Silent (the list just updates). */
+	private async refreshBgServers(): Promise<void> {
+		if (this.disposed || this.bgServers.size === 0) return;
+		const now = await snapshotListeningPorts();
+		let changed = false;
+		for (const [port, v] of [...this.bgServers]) {
+			if (now.get(port) !== v.pid) {
+				this.bgServers.delete(port);
+				changed = true;
+			}
+		}
+		if (changed) this.emitBgServers();
+	}
+
+	/** Re-push the current list on request (panel opened); prunes dead entries first. */
+	async listBgServers(): Promise<void> {
+		await this.refreshBgServers();
+		this.emitBgServers();
+	}
+
+	/** Kill ONE background server (by port); returns whether anything was killed. */
+	async killBackgroundServer(port: number): Promise<boolean> {
+		const entry = this.bgServers.get(port);
+		if (!entry) {
+			this.emit({
+				type: "notice",
+				level: "info",
+				text: `端口 ${port} 不在后台任务列表中`,
+			});
+			this.flushSnapshot();
+			return false;
+		}
+		killPidTree(entry.pid);
+		this.bgServers.delete(port);
+		this.emitBgServers();
+		this.emit({
+			type: "notice",
+			level: "info",
+			text: `已停止后台任务：端口 ${port}（pid ${entry.pid}）`,
+		});
+		this.flushSnapshot();
+		return true;
 	}
 
 	/** Kill every background server the agent started; returns the freed ports. */
-	private async killBackgroundServers(): Promise<string[]> {
+	async killAllBackgroundServers(): Promise<string[]> {
 		if (this.bgServers.size === 0) return [];
 		const killed: string[] = [];
 		for (const [port, { pid }] of [...this.bgServers]) {
@@ -3437,6 +3552,7 @@ export class ClientSession {
 			killed.push(String(port));
 		}
 		this.bgServers.clear();
+		this.emitBgServers();
 		return killed;
 	}
 
@@ -5111,6 +5227,10 @@ export class ClientSession {
 		}
 		this.unwatchDir();
 		this.webUi.dispose();
+		if (this.bgTimer) {
+			clearInterval(this.bgTimer);
+			this.bgTimer = null;
+		}
 		for (const conv of this.convs.values()) {
 			this.clearAllToolWatchdogs(conv);
 			conv.unsubscribe?.();

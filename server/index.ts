@@ -257,6 +257,15 @@ wss.on("connection", (ws) => {
 			case "abort_bash":
 				void cs.abortBash();
 				break;
+			case "kill_background_server":
+				void cs.killBackgroundServer(msg.port);
+				break;
+			case "kill_background_servers":
+				void cs.killAllBackgroundServers();
+				break;
+			case "list_bg_servers":
+				void cs.listBgServers();
+				break;
 			case "new_chat":
 				void cs.newChat();
 				break;

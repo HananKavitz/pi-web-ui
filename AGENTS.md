@@ -110,7 +110,8 @@ pi-web-ui/
 │   ├── vite.config.ts          # dev 端口 5173，/ws 代理到后端
 │   ├── src/
 │   │   ├── App.tsx             # 顶层布局：TopBar / LeftPanel / MessageList / ChatInput /
-│   │   │                       #   RightPanel / FooterBar / Dialog / 各 Modal / FilePreview
+│   │   │                       #   RightPanel / FooterBar / Dialog / 各 Modal / FilePreview /
+│   │   │                       #   视图切换 chat | terminal | git（源代码管理）
 │   │   ├── use-chat.ts         # ★ useChat()：WebSocket 连接管理、reducer 状态机、
 │   │   │                       #   终端输出 bridge（未挂载终端的输出先缓冲）
 │   │   ├── types.ts            # ★ wire 协议镜像（与 server/protocol.ts 手工同步，仅类型）
@@ -142,7 +143,8 @@ pi-web-ui/
 | `Message.tsx` / `MessageList.tsx` | 消息渲染：附件卡片（`stripFileWrapper` 剥 `<file>` 包装）、流式光标、tool 结果关联；`/skill:name` 展开的 `<skill>` 块渲染为可折叠技能卡片（`web/src/skill-block.ts` 的 `parseSkillBlock` 镜像 SDK 正则，折叠显示 `[技能] name`，展开显示完整 SKILL.md；用户自己的 args 单独渲染，编辑重问时重建 `/skill:name args`，问题导航用 args 而非技能内容）；超过 30 条后旧消息折叠为摘要行（`CollapsedMessage`，惰性渲染，点击展开，常量 `KEEP_RECENT`/`COLLAPSE_MIN` 在 MessageList 顶部）；**问题导航双通道**：右侧浮动 `.qn-rail`（hover 浮出问题文本 chip，问题多时 `.many` 变体换成可滚动 `.qn-list` 面板，移出立即隐藏无延迟）+ 每个问题消息头部右端的常驻 `.qn-tag`（横条+序号，点击跳转，当前屏幕问题高亮） |
 | `ToolCallBlock.tsx` / `ThinkingBlock.tsx` / `BashBlock` | 工具调用卡片、思考块、bash 输出 |
 | `TerminalPanel.tsx` / `TermXterm.tsx` | 终端视图 + xterm 实例桥接 |
-| `TopBar.tsx` / `FooterBar.tsx` | 顶栏（模型/思考强度/声音/新对话/视图切换）、底栏（上下文/成本/工作目录） |
+| `SCMPanel.tsx` | **源代码管理（Git）视图**：对当前 cwd 展示 status/branch/diff；提交/切换分支/推送/拉取按钮复用终端桥接把命令发到可见终端执行（自动切到终端视图）；只读查询在**隐藏查询终端**里跑（terminal_create + terminal_input + terminal.register 捕获输出，shell 变量拼接的 sentinel 切分多段输出，stty -echo 关回显、PS1 标记过滤提示符）|
+| `TopBar.tsx` / `FooterBar.tsx` | 顶栏（模型/思考强度/后台任务/声音/新对话/视图切换）、底栏（上下文/成本/工作目录） |
 | `Dialog.tsx` | 扩展 `ui.select/confirm/input` → 浏览器弹窗 |
 | `ModelConfigModal.tsx` / `PiSetupModal.tsx` | models.json 管理 / 首次配置引导 |
 | `SettingsModal.tsx` | 设置面板：系统提示词（append/replace 模式 + 文本，失焦自动应用）、技能/插件开关（即时生效）、预设（保存/应用/删除当前组合） |
@@ -219,6 +221,22 @@ createImageBitmap 解码 SVG 会失败，SVG 作为普通文件附加让模型�
 
 - 每客户端一个 `TerminalManager`；输出经 `terminal_output` 推给浏览器，
   未挂载终端先缓冲（200KB 上限），挂载时冲刷。socket 断开 → 服务端杀掉全部 PTY。
+- **node-pty × Node `--watch` 兼容自愈**（`server/patch-node-pty.ts`，必须排在 node-pty 之前 import）：
+  dev 脚本用 `node --watch`，watch 模式会向 node-pty 的 ConPTY worker / console-list agent 的
+  IPC 通道推 `watch:require`/`watch:import` 消息——node-pty 1.1.0 不识别，导致①每条都
+  `console.warn('Unexpected ConoutWorkerMessage')` 刷屏；②kill 路径把 watch 消息当 agent 回复，
+  `message.consoleProcessList` 为 undefined 直接 `.forEach` 崩溃。补丁模块在启动时幂等地改写
+  安装副本（仿 spawn-helper chmod 先例）；`terminals.ts` 里另有一层 console.warn 过滤兜底。
+  生产（无 `--watch`）不受影响。
+- **源代码管理（`SCMPanel`，视图 `git`）的隐藏查询终端**：不新增后端 git 集成，纯前端复用
+  终端协议跑只读查询——固定 terminalId `scm-git-query` 的隐藏 PTY（`terminal_create` +
+  `terminal_input`，输出经 `terminal.register` 捕获）。两段握手暖机：① `export PS1=<标记>;`
+  `exec bash --norc -s` 等标记提示符出现（PS1 用 `__PIWEB_PROMPT_""__` 拼接，回显行不含连续标记；
+  必须分两段等握手——ConPTY 下 exec 完成前送入的输入会被丢弃）；② `stty -echo` + READY 标记
+  （关回显消除输入回显与输出交错，消费到 READY 顺带丢弃启动提示符/.bashrc 噪音）。查询行用
+  shell 变量拼接 sentinel（`S=__PIWEB_SCM_; S=$S"DONE_7F3A__"`，回显不含连续 sentinel），
+  一次查询多段输出按 sentinel 切分解析（status/branch/diff --stat…）。15s 超时自动 kill+重建。
+  写操作（提交/切换分支/推送/拉取）复用可见终端 tab（TerminalPanel 同款 tab 复用逻辑）并切到终端视图。
 - macOS 下若服务由 launchd 拉起（`process.ppid === 1`，LaunchAgent/孤儿进程），TCC 会把
   相机/麦克风权限归因到 node 本身（无 App Bundle、无 Info.plist）而静默拒绝——ffmpeg 取流会
   卡死在取帧。`terminals.ts` 检测该场景，在客户端首次创建终端时输出提示（改 url/文件源，
@@ -264,7 +282,8 @@ createImageBitmap 解码 SVG 会失败，SVG 作为普通文件附加让模型�
 ## 5. 开发工作流
 
 ```bash
-npm run dev          # 并行：node --watch --import tsx 后端(:8787，dev:server 脚本) + vite 前端(:5173，代理 /ws)。
+npm run dev          # 并行：node --watch --import tsx 后端(:8788，dev:server 脚本，cross-env 固定 PORT=8788，
+#                     避开全局 pi-web-ui 的默认 :8787) + vite 前端(:5173，代理 /ws 到 :8788)。
 #                     注意：不要用 `tsx watch` 起后端——它在 Windows 下、stdio 为管道（concurrently 的 spawn 方式）时会静默挂死（tsx 上游 bug），改用 Node 原生 --watch。
 npm run typecheck    # 双端 tsc --noEmit（提交前必跑）
 npm run build        # build:web (vite) + build:server (tsc)
@@ -313,6 +332,7 @@ npm run test:freeze  # 冻结/重连回归测试（Playwright，需要 chromium 
 - **验证项**：每改完一版，跑本地 server（隔离端口+独立 data-dir）→ 对应 `*-test.mjs` → `npm run typecheck` → 涉及 UI 再用 `playwright` 浏览器测试（chromium 路径见各测试文件 HEADLESS 常量）。
 - **goal 家族测试**（仓库根 `goal-*.mjs`）：`goal-test`=协议冒烟（set/clear/locked/review-model/rounds 轮序，无 token）；`goal-prefs-test`=偏好持久化跨 reload；`goal-pill-test`=GoalBar UI（胶囊、向上下拉）；`goal-rounds-test`=最大轮数**直接输入**控件（可输任意值/0=不限）；`goal-autostart-test`=直接 set_goal（不带向导）也**自动触发生成**；`goal-abort-test`=**手动 Stop 即清除 goal、停止审查循环**（agent_end 里助手消息 stopReason==="aborted" 判中断）；`goal-wizard-test`=问卷收敛 auto-set + **auto-generate 自动触发生成**；`goal-wizard-cancel-test`=调研取消/超时；`goal-review-loop-test`=锁定+无限轮数的真实审查循环（需要真模型，本机 deepseek 可能卡，fail 属环境非概率即可）。
 - **settings 家族测试**（`settings-test.mjs`，端口 8931）：设置面板协议冒烟——settings_state 推送 / get_settings / set_settings（提示词 append+replace、技能与插件开关） / save_preset / apply_preset / delete_preset / 重连后持久化；假 agent 目录（隔离）只测协议，指向真实 agent 目录可覆盖开关往返。
+- **scm-test.mjs**：源代码管理面板 E2E（独立端口 + 临时 git 仓库 cwd + 临时 data-dir，真实 Chrome headless）：status 列表 / 分支 chip / 单文件 diff / 未跟踪提示 / 提交端到端（终端 tab + 磁盘验证 + 自动刷新回干净） / 分支切换（select + 终端执行 checkout）。注意本机 `process.execPath` 是 fnm multishell 临时 shim，spawn server 前先 `realpathSync(process.execPath)` 取真实 node。
 
 ## 6. 发布流程（GitHub + npm）
 
@@ -407,15 +427,18 @@ pi-web-ui server status|restart|stop|uninstall
 - **工具挂死看门狗**：每个 `tool_execution_start` 都会为 toolCallId arm 一个 `TOOL_WATCHDOG_TIMEOUT_MS`（默认 20 分钟，
   环境变量 `PI_WEB_TOOL_TIMEOUT_MS`（毫秒）覆盖）的 timer——超时仍在跑就 `session.abort()`（杀进程树）+ warning notice，
   `tool_execution_end` / `removeConversation` / `dispose` 都会清掉对应 timer。
-- **强中断（顶栏「中断」按钮 / 输入框「停止」）**：都发 `{ type: "abort" }` → `ClientSession.interruptRun()`——
-  ① `session.abort()`（正常 Stop 语义，agent_end stopReason "aborted"）；② 以 **agent_end 事件**为准：abort 卡住
-  （`HARD_ABORT_TIMEOUT_MS`=15s）或空转（abort 返回后 `HARD_ABORT_SETTLE_MS`=8s 结算窗口内 agent_end 没到，如模型流
-  在 run 开始前就挂起）时 `forceResetConversation()`：dispose 旧 runtime + `SessionManager.continueRecent(cwd)` 从磁盘
-  恢复重建 + 重绑会话（同一 conv 记录，UI 不掉线）；看门狗超时也走同一 `interruptRun`。
-  **同时清理 AI 后台启动的服务**：bash 工具执行前后各拍一次监听快照（`snapshotListeningPorts`，Windows netstat /
-  POSIX lsof），diff 出的新增 LISTENING 进程记入 `bgServers`（端口→pid，启动后 notice 提示「点顶栏中断可停止」）；
-  `abort()` 时 `killBackgroundServers()` 对每个 pid `killPidTree`（Windows `taskkill /F /T`）并 notice 报告释放的端口——
-  AI `npm run dev &` 之类后台服务不再残留占端口（已 SDK 直连验证：后台 node server 被检测并杀掉、端口释放）。
+	恢复重建 + 重绑会话（同一 conv 记录，UI 不掉线）；看门狗超时也走同一 `interruptRun`。
+	**只停止运行，不碰后台服务**：abort 不再连带杀 AI 启动的服务——那些由「后台任务」面板单独管理。
+- **后台任务列表（顶栏「后台任务」按钮，替代原「中断」按钮）**：bash 工具执行前后各拍一次监听快照
+  （`snapshotListeningPorts`，Windows netstat / POSIX lsof），diff 出的新增 LISTENING 进程记入 `bgServers`
+  （端口→pid→since→name，name 经 `lookupProcessName` tasklist/ps 尽力获取），启动后 notice 提示
+  「可在顶栏「后台任务」里单独停止或全部关闭」；**列表按客户端持久**（ClientSession 字段，非对话级）——
+  对话结束/切换/断线重连都不消失（attachSink 重推 `bg_servers`），只有任务被停或进程自行退出才移除
+  （30s 定时器 `refreshBgServers` 重新对端口快照，port+pid 都匹配才算还活着，静默剔除死项）。
+  协议：`bg_servers`（ServerMessage，推送全量列表）/ `kill_background_server`（按端口停单个）/
+  `kill_background_servers`（全部关闭，`killAllBackgroundServers` 对每个 pid `killPidTree`，Windows
+  `taskkill /F /T`）/ `list_bg_servers`（面板打开时请求刷新）；前端 `BgTasksModal`（每个任务行
+  「停止」+ 底部「全部关闭」「刷新」，空列表有占位文案）。
 - **只停止 bash 命令（对话继续）**：bash 工具卡片运行中显示「停止」→ 发 `{ type: "abort_bash" }` →
   `ClientSession.abortBash()`。服务端用 **killable bash 工具**（`makeKillableBashTool`，经 `customTools` 按 name 覆盖
   SDK 内置 bash）：执行时把自己的 AbortController 注册进客户端级 `bashKills` 集合，abort 只杀这些 controller

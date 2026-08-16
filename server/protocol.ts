@@ -222,6 +222,14 @@ export type ClientMessage =
 	| { type: "abort" }
 	/** Kill only the running bash command(s) — the agent run itself continues. */
 	| { type: "abort_bash" }
+	// -- background tasks (AI-started servers) ------------------------------
+	/** Kill ONE background server the agent started (by listening port). */
+	| { type: "kill_background_server"; port: number }
+	/** Kill EVERY background server the agent started (frees all ports). */
+	| { type: "kill_background_servers" }
+	/** Re-push the current background-server list (the server also refreshes it
+	 *  on its own and prunes entries whose process exited). */
+	| { type: "list_bg_servers" }
 	| { type: "new_chat" }
 	/** Edit a past user question and re-ask it (forks a new session at that point). */
 	| { type: "edit_message"; messageId: string; text: string }
@@ -330,6 +338,20 @@ export interface ProjectSummary {
 	lastUsed: number;
 }
 
+/** A background server the agent left running (listening-port diff around a
+ *  bash tool run). Keyed by port. Managed from the 后台任务 panel: each entry
+ *  can be stopped individually or all at once, and the list persists even
+ *  after the conversation that started them ends. */
+export interface BgServer {
+	/** Port the server listens on (the stable key). */
+	port: number;
+	/** Process id of the listening process. */
+	pid: number;
+	/** When the server was first detected (ms epoch). */
+	since: number;
+	/** Best-effort process name (tasklist / ps), undefined when unknown. */
+	name?: string;
+}
 export interface FileEntry {
 	name: string;
 	/** Path relative to the workspace root ('' for the root itself). */
@@ -616,3 +638,10 @@ export type ServerMessage =
 	 *  extensions, saved presets). Pushed on attach and after every settings
 	 *  change. */
 	| { type: "settings_state"; settings: UiSettingsState }
+	// -- background tasks ---------------------------------------------------
+	/** The background-server list (servers the agent left running, detected via
+	 *  listening-port diffs around bash tool runs). Per CLIENT, not per
+	 *  conversation — the list survives conversation switches/ends and only
+	 *  empties when the tasks are stopped (individually or all at once) or the
+	 *  process exits on its own. Pushed on change, on attach and on request. */
+	| { type: "bg_servers"; servers: BgServer[] }

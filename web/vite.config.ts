@@ -7,6 +7,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Dev: Vite serves the web UI on :5173 and proxies the WebSocket + any API
 // traffic to the backend server (which runs separately via `npm run dev:server`).
+// The dev backend is pinned to :8788 (see the dev:server script) so it never
+// collides with a globally-installed pi-web-ui running on the default :8787.
 export default defineConfig({
 	root: __dirname,
 	plugins: [react()],
@@ -17,9 +19,9 @@ export default defineConfig({
 	server: {
 		port: 5173,
 		proxy: {
-			"/api": "http://localhost:8787",
+			"/api": "http://localhost:8788",
 			"/ws": {
-				target: "ws://localhost:8787",
+				target: "ws://localhost:8788",
 				ws: true,
 				// Don't leak sockets when the backend is down/restarting (avoids
 				// ERR_INSUFFICIENT_RESOURCES from accumulated dead proxy sockets).

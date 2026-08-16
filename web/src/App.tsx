@@ -8,14 +8,18 @@ import { GoalBar } from "./components/GoalBar";
 import { FooterBar } from "./components/FooterBar";
 import { Dialog } from "./components/Dialog";
 import { TerminalPanel } from "./components/TerminalPanel";
+import { ScmPanel } from "./components/SCMPanel";
 import { PiSetupModal } from "./components/PiSetupModal";
 import { ModelConfigModal } from "./components/ModelConfigModal";
 
 import { SettingsModal } from "./components/SettingsModal";
+import { BgTasksModal } from "./components/BgTasksModal";
 import { FilePreview, type PreviewFile } from "./components/FilePreview";
 import { useChat } from "./use-chat";
 import type { ClientMessage } from "./types";
 import { useT } from "./i18n";
+import { FiAlertCircle, FiAlertTriangle, FiInfo, FiX } from "react-icons/fi";
+import type { Notice } from "./use-chat";
 import { fileToProcessedImage, isRasterImage, type ProcessedImage } from "./image-paste";
 import {
 	loadSoundSettings,
@@ -43,12 +47,60 @@ export interface PendingAttachment {
 	key?: string;
 }
 
+
+/** A single notice toast. Auto-dismisses after a level-dependent delay, but
+ *  hovering PAUSES the timer (stays visible as long as the pointer is over it),
+ *  resuming when the pointer leaves. Clicking the toast body does NOT hide it —
+ *  only the × button dismisses (and the auto timer). */
+function NoticeToast({
+	notice,
+	onDismiss,
+}: {
+	notice: Notice;
+	onDismiss: (id: number) => void;
+}) {
+	const t = useT();
+	const [paused, setPaused] = useState(false);
+	useEffect(() => {
+		if (paused) return;
+		const t = setTimeout(
+			() => onDismiss(notice.id),
+			notice.level === "error" ? 12000 : 7000,
+		);
+		return () => clearTimeout(t);
+	}, [paused, notice.id, notice.level, onDismiss]);
+	const Icon =
+		notice.level === "error"
+			? FiAlertCircle
+			: notice.level === "warning"
+				? FiAlertTriangle
+				: FiInfo;
+	return (
+		<div
+			className={`notice notice-${notice.level}${paused ? " paused" : ""}`}
+			role="status"
+			onMouseEnter={() => setPaused(true)}
+			onMouseLeave={() => setPaused(false)}
+		>
+			<Icon className="notice-icon" />
+			<span className="notice-text">{notice.text}</span>
+			<button
+				type="button"
+				className="notice-close"
+				title={t("close")}
+				onClick={() => onDismiss(notice.id)}
+			>
+				<FiX />
+			</button>
+		</div>
+	);
+}
 export function App() {
 	const t = useT();
 	const { chat, send, dismissNotice, pushNotice, terminal } = useChat();
 	const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
 	const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
-	const [view, setView] = useState<"chat" | "terminal">("chat");
+	const [view, setView] = useState<"chat" | "terminal" | "git">("chat");
 	// Mobile: which side panel is open as a drawer (null = both closed).
 	const [drawer, setDrawer] = useState<"left" | "right" | null>(null);
 	// Setup modal: one-time prompt when the pi agent config is missing.
@@ -57,6 +109,8 @@ export function App() {
 	const [manageModelsOpen, setManageModelsOpen] = useState(false);
 	// Settings panel (system prompt / skills / extensions / presets).
 	const [settingsOpen, setSettingsOpen] = useState(false);
+	// Background-task panel (AI-started servers — stop individually or all).
+	const [bgTasksOpen, setBgTasksOpen] = useState(false);
 
 	// -- sound notifications --------------------------------------------------
 	const [sound, setSound] = useState<SoundSettings>(loadSoundSettings);
@@ -250,20 +304,14 @@ export function App() {
 				onOpenPanel={setDrawer}
 				onManageModels={() => setManageModelsOpen(true)}
 				onOpenSettings={() => setSettingsOpen(true)}
+				onOpenBgTasks={() => setBgTasksOpen(true)}
 				sound={sound}
 				onSoundChange={setSound}
 				onSoundPreview={(kind: SoundKind) => playSound(kind, sound)}
 			/>
 			<div className="notices">
 				{chat.notices.map((n) => (
-					<button
-						type="button"
-						key={n.id}
-						className={`notice notice-${n.level}`}
-						onClick={() => dismissNotice(n.id)}
-					>
-						{n.text}
-					</button>
+					<NoticeToast key={n.id} notice={n} onDismiss={dismissNotice} />
 				))}
 			</div>
 			<div className="layout">
@@ -325,6 +373,15 @@ export function App() {
 				<div className={`view-pane ${view === "terminal" ? "" : "hidden"}`}>
 					<TerminalPanel chat={chat} send={send} terminal={terminal} />
 				</div>
+				<div className={`view-pane ${view === "git" ? "" : "hidden"}`}>
+					<ScmPanel
+						chat={chat}
+						send={send}
+						terminal={terminal}
+						active={view === "git"}
+						onSwitchToTerminal={() => setView("terminal")}
+					/>
+				</div>
 			</div>
 			<FooterBar chat={chat} send={send} />
 			{chat.dialog && <Dialog dialog={chat.dialog} send={send} />}
@@ -366,6 +423,13 @@ export function App() {
 					chat={chat}
 					send={send}
 					onClose={() => setSettingsOpen(false)}
+				/>
+			)}
+			{bgTasksOpen && (
+				<BgTasksModal
+					servers={chat.bgServers}
+					send={send}
+					onClose={() => setBgTasksOpen(false)}
 				/>
 			)}
 		</div>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef } from "react";
 import { randomUuid } from "./uuid";
 import type {
 	ClientMessage,
+	BgServer,
 	CommandDef,
 	ConversationSummary,
 	FileContent,
@@ -116,6 +117,9 @@ export interface ChatState {
 	goal: GoalStatus;
 	/** Settings-panel state (system prompt, skill/extension toggles, presets). */
 	settings: UiSettingsState | null;
+	/** AI-started background servers (managed from the 后台任务 panel). The
+	 *  list lives on the client session, so it survives conversation ends. */
+	bgServers: BgServer[];
 }
 
 type Action =
@@ -175,7 +179,8 @@ type Action =
 	| { type: "terminal_exit"; terminalId: string; exitCode: number | null }
 	| { type: "terminal_restart"; terminalId: string }
 	| { type: "goal_status"; status: GoalStatus }
-	| { type: "settings"; settings: UiSettingsState };
+	| { type: "settings"; settings: UiSettingsState }
+	| { type: "bg_servers"; servers: BgServer[] };
 
 const MAX_LIVE_OUTPUT = 200_000;
 const MAX_TERM_BUFFER = 200_000;
@@ -385,6 +390,8 @@ function reducer(state: ChatState, action: Action): ChatState {
 			return { ...state, goal: action.status };
 		case "settings":
 			return { ...state, settings: action.settings };
+		case "bg_servers":
+			return { ...state, bgServers: action.servers };
 		case "terminal_add":
 			return { ...state, terminals: [...state.terminals, action.meta] };
 		case "terminal_remove":
@@ -465,6 +472,7 @@ export function useChat() {
 		slashCommands: [],
 		terminals: [],
 		goal: DEFAULT_GOAL,
+		bgServers: [],
 		settings: null,
 	});
 	const wsRef = useRef<WebSocket | null>(null);
@@ -483,10 +491,7 @@ export function useChat() {
 	const pushNotice = useCallback((level: Notice["level"], text: string) => {
 		const id = ++noticeId.current;
 		dispatch({ type: "notice", notice: { id, level, text } });
-		setTimeout(
-			() => dispatch({ type: "dismiss_notice", id }),
-			level === "error" ? 12000 : 7000,
-		);
+		// 自动消失计时由通知组件（NoticeToast）管理：悬浮暂停、移开继续。
 	}, []);
 
 	const send = useCallback((msg: ClientMessage) => {
@@ -577,10 +582,6 @@ export function useChat() {
 						type: "notice",
 						notice: { id, level: msg.level, text: msg.text },
 					});
-					setTimeout(
-						() => dispatch({ type: "dismiss_notice", id }),
-						msg.level === "error" ? 12000 : 7000,
-					);
 					break;
 				}
 				case "sessions":
@@ -671,6 +672,9 @@ export function useChat() {
 					break;
 				case "settings_state":
 					dispatch({ type: "settings", settings: msg.settings });
+					break;
+				case "bg_servers":
+					dispatch({ type: "bg_servers", servers: msg.servers });
 					break;
 				default:
 					break;
