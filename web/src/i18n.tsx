@@ -186,6 +186,8 @@ const zh = {
 
 	/* file preview */
 	selectLinesHint: "点击选择行；拖拽或 Shift+点击选择范围",
+	enableWrap: "开启自动换行",
+	disableWrap: "关闭自动换行",
 	selectedRange: "已选 {n} 行（第 {start}-{end} 行）",
 	fileLines: "{n} 行",
 	selectAll: "全选",
@@ -615,6 +617,8 @@ const en: Record<keyof typeof zh, string> = {
 
 	/* file preview */
 	selectLinesHint: "Click a line to select; drag or Shift+click for a range",
+	enableWrap: "Enable line wrap",
+	disableWrap: "Disable line wrap",
 	selectedRange: "Selected {n} lines (lines {start}-{end})",
 	fileLines: "{n} lines",
 	selectAll: "Select all",

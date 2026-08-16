@@ -5229,8 +5229,8 @@ body {
 	display: flex;
 	flex-direction: column;
 	width: 100%;
-	max-width: 860px;
-	height: min(78vh, 720px);
+	max-width: 1120px;
+	height: min(88vh, 880px);
 	background: var(--bg-elev2);
 	border: 1px solid var(--border);
 	border-radius: 12px;
@@ -5303,6 +5303,12 @@ body {
 	background: var(--amber);
 	border-color: var(--amber);
 	color: #1a1a1a;
+}
+.fp-attach.wrap:hover,
+.fp-attach.wrap.on {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: #fff;
 }
 
 /* Tooltip for the header icon buttons (same pattern as .file-attach). */
@@ -5448,8 +5454,13 @@ body {
 .fp-code-text {
 	flex: 1;
 	min-width: 0;
-	white-space: pre;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 	color: var(--text-dim);
+}
+.fp-code.no-wrap .fp-code-text {
+	white-space: pre;
+	overflow-wrap: normal;
 }
 .fp-line.sel .fp-code-text {
 	color: var(--text);

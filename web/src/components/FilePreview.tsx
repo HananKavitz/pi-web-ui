@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FiCheck, FiLink, FiPlus, FiX } from "react-icons/fi";
+import {
+	FiCheck,
+	FiCornerDownLeft,
+	FiLink,
+	FiPlus,
+	FiX,
+} from "react-icons/fi";
 import type { ClientMessage, FileContent } from "../types";
 import { useT } from "../i18n";
 import { getClientId } from "../use-chat";
@@ -44,6 +50,8 @@ export function FilePreview({
 	const [sel, setSel] = useState<Range | null>(null);
 	const [dragging, setDragging] = useState(false);
 	const [added, setAdded] = useState(false);
+	// Word wrap for the text preview (default on).
+	const [wrap, setWrap] = useState(true);
 	const anchorRef = useRef(0);
 	const draggingRef = useRef(false);
 	const addedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -169,6 +177,16 @@ export function FilePreview({
 						{loaded && ` · ${formatSize(loaded.size)}`}
 					</span>
 					<span className="fp-head-actions">
+						{kind === "text" && !isBinary && (
+							<button
+								type="button"
+								className={`fp-attach wrap ${wrap ? "on" : ""}`}
+								data-tip={wrap ? t("disableWrap") : t("enableWrap")}
+								onClick={() => setWrap((w) => !w)}
+							>
+								<FiCornerDownLeft />
+							</button>
+						)}
 						{kind !== "video" && kind !== "none" && (
 							<button
 								type="button"
@@ -253,7 +271,9 @@ export function FilePreview({
 
 				{!loading && kind === "text" && !isBinary && lines.length > 0 && (
 					<div
-						className={`fp-code ${dragging ? "dragging" : ""}`}
+						className={`fp-code ${dragging ? "dragging" : ""} ${
+							wrap ? "" : "no-wrap"
+						}`}
 						onMouseDown={(e) => {
 							// Block native text selection so click/drag maps to line ranges.
 							if (e.button === 0) e.preventDefault();
