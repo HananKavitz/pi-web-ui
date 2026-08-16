@@ -2476,8 +2476,8 @@ body {
 
 	.notices {
 		position: fixed;
-		/* 中下偏上：浮在消息区底部、输入框上方较远处（不挡输入也不贴输入框） */
-		bottom: 200px;
+		/* 顶部偏下：顶栏下方，不挡顶栏也不贴消息区 */
+		top: 80px;
 		left: 50%;
 		transform: translateX(-50%);
 		z-index: 50;
