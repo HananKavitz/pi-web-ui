@@ -4,7 +4,8 @@
 
 [pi 编码智能体](https://pi.dev) 的 Web 聊天界面 —— 智能体通过 pi SDK 在服务端进程内运行，
 事件经 WebSocket 流式推送到浏览器。支持思考块与工具调用、附件与图片问答、内置终端、
-模型管理等功能。需要 Node.js ≥ 22.19 及配置好的 pi 环境。
+模型管理，以及设置面板（自定义系统提示词、技能/插件开关、设置预设一键应用）等功能。
+需要 Node.js ≥ 22.19 及配置好的 pi 环境。
 
 ## 界面截图
 
@@ -16,6 +17,13 @@
 npm i -g pi-web-ui            # 全局安装（推荐）
 npx pi-web-ui                 # 或免安装直接跑（拉取最新版，启动在 :8787）
 npm i -g .                    # 或安装本地 checkout
+```
+
+**npm ≥ 12？** npm 12+ 默认阻止依赖安装脚本（会看到 `npm warn install-scripts … blocked` 警告）。
+node-pty 是原生模块，需要放行其脚本（其余两个包只是 no-op/纯提示，一并放行可消除警告）：
+
+```bash
+npm i -g --allow-scripts=node-pty,@google/genai,protobufjs pi-web-ui@latest
 ```
 
 ## 启动

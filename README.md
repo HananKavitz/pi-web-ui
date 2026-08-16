@@ -5,8 +5,9 @@
 A web chat interface for the [pi coding agent](https://pi.dev) — the agent runs
 in-process via the pi SDK and streams events to the browser over WebSocket. Chat
 with thinking blocks and tool calls, attach files, ask about images, use a
-built-in terminal, manage models, and more. Requires Node.js ≥ 22.19 and a
-configured pi install.
+built-in terminal, manage models, tweak the system prompt, toggle skills and
+extensions on/off, and save/apply settings presets — all from a settings panel.
+Requires Node.js ≥ 22.19 and a configured pi install.
 
 ## Screenshots
 
@@ -18,6 +19,15 @@ configured pi install.
 npm i -g pi-web-ui            # global install (recommended)
 npx pi-web-ui                 # or run without installing (latest, starts on :8787)
 npm i -g .                    # or install the local checkout
+```
+
+**npm ≥ 12?** npm 12+ blocks dependency install scripts by default (you'll see
+`npm warn install-scripts … blocked`). node-pty is a native module, so allow its
+script (the other two packages it lists are harmless no-ops — allowing them just
+silences the warning):
+
+```bash
+npm i -g --allow-scripts=node-pty,@google/genai,protobufjs pi-web-ui@latest
 ```
 
 ## Start
