@@ -64,7 +64,24 @@ pi-web-ui server stop                       # 停止（开机自启保留）
 pi-web-ui server start                      # 再次启动
 pi-web-ui server uninstall                  # 彻底移除服务
 pi-web-ui server shortcut                   # 桌面一键启动图标
+pi-web-ui server quiesce                    # 排空：拒绝新的对话/消息，存量运行继续跑完
+pi-web-ui server unquiesce                  # 解除排空，恢复接收新工作
 ```
+
+`server status` 还会经本地控制 socket 显示实时状态（版本、PID、排空状态、
+浏览器连接数、运行中对话数）——`quiesce`/`unquiesce` 也走同一个 socket。
+
+## 安全
+
+- **默认只绑 loopback** —— 服务器只监听 `127.0.0.1`，不暴露到网络；需要局域网访问或
+  Docker 端口映射时显式设置 `PI_WEB_HOST=0.0.0.0`（docker-compose.yml 已内置）。
+- **WebSocket Origin 校验** —— 浏览器页面连 `/ws` 时其 Origin 的 hostname **和端口**
+  必须与请求 Host 一致，跨源页面直接 403；无 Origin 的非浏览器客户端不受影响。
+  反向代理场景可用 `PI_WEB_ALLOW_ORIGINS=http://你的域名:端口` 放行。
+- **Quiesce 排空** —— `server quiesce` 后拒绝新的 prompt/编辑重问/会话恢复，存量运行
+  跑完为止（升级/备份前用）；`server unquiesce` 恢复。
+- **凭据不下发浏览器** —— provider 的 `headers`（可能含 Authorization / API key）
+  永不发给浏览器；模型管理 UI 编辑其他字段，服务端自动保留 headers。
 
 - **macOS** → launchd 代理（无需 sudo），日志 `/tmp/pi-web-ui.log` / `.err`
 - **Linux** → systemd unit（`systemctl enable --now`），日志 `journalctl -u pi-web-ui -f`

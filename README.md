@@ -68,7 +68,30 @@ pi-web-ui server stop                       # stop (auto-start stays)
 pi-web-ui server start                      # start again
 pi-web-ui server uninstall                  # remove the service entirely
 pi-web-ui server shortcut                   # desktop one-click launch icon
+pi-web-ui server quiesce                    # drain: refuse NEW chats/messages, let running ones finish
+pi-web-ui server unquiesce                  # reopen admission
 ```
+
+`server status` also shows live stats via a local control socket (version,
+PID, quiesce state, connected browsers, running conversations) — the same
+socket drives `quiesce`/`unquiesce`.
+
+## Security
+
+- **Loopback-only by default** — the server binds `127.0.0.1` and is not
+  reachable from the network unless you explicitly set `PI_WEB_HOST=0.0.0.0`
+  (e.g. LAN access, Docker port mapping — the compose file sets it for you).
+- **WebSocket origin check** — browser pages connecting to `/ws` must present
+  an `Origin` whose hostname **and port** match the request `Host`;
+  cross-origin pages are rejected with 403. Non-browser clients (no `Origin`)
+  are unaffected. Add `PI_WEB_ALLOW_ORIGINS=http://your-host:port` for
+  reverse-proxy setups.
+- **Quiesce** — `server quiesce` refuses new prompts/forks/session resumes
+  until you `server unquiesce`; in-flight runs finish cleanly (useful before
+  upgrades/backups).
+- **Credentials stay server-side** — provider `headers` (which may carry
+  `Authorization` / API keys) are never sent to the browser; the model
+  management UI edits everything else and the server preserves the headers.
 
 - **macOS** → launchd agent (no sudo), logs to `/tmp/pi-web-ui.log` / `.err`
 - **Linux** → systemd unit (`systemctl enable --now`), logs via `journalctl -u pi-web-ui -f`
