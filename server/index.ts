@@ -18,7 +18,7 @@
  */
 import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage } from "node:http";
 import { createConnection } from "node:net";
 import { spawn } from "node:child_process";
 import { basename, delimiter, dirname, join, resolve } from "node:path";
@@ -28,13 +28,37 @@ import { randomUUID } from "node:crypto";
 import express from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { VERSION, getAgentDir } from "@earendil-works/pi-coding-agent";
-import { AgentService, previewKind, workspacePath } from "./agent-service.js";
+import {
+	AgentService,
+	previewKind,
+	workspacePath,
+	QuiesceRejectedError,
+} from "./agent-service.js";
+import { startControlServer } from "./control-socket.js";
 import { ensureWindowsBash, windowsBashDir } from "./ensure-bash.js";
 import type { ClientMessage, ServerMessage } from "./protocol.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const CWD = resolve(process.env.PI_WEB_CWD ?? process.cwd());
 const DATA_DIR = resolve(process.env.PI_WEB_DATA_DIR ?? join(homedir(), ".pi-web"));
+
+/** Bind address. Default is loopback ONLY — the service is a local personal
+ *  tool and should not be reachable from the network unless explicitly asked
+ *  (e.g. PI_WEB_HOST=0.0.0.0 for LAN access / Docker port mapping). */
+const HOST = process.env.PI_WEB_HOST ?? "127.0.0.1";
+/** Optional strict hostname allowlist (comma-separated) — only used when set.
+ *  Origin / Host same-authority matching happens regardless. */
+const ALLOW_HOSTS = (process.env.PI_WEB_ALLOW_HOSTS ?? "")
+	.split(",")
+	.map((s) => s.trim().toLowerCase())
+	.filter(Boolean);
+/** Optional extra Origins allowed through the same-authority check (comma-
+ *  separated, e.g. reverse-proxy setups where the browser origin differs
+ *  from the Host the backend sees). */
+const ALLOW_ORIGINS = (process.env.PI_WEB_ALLOW_ORIGINS ?? "")
+	.split(",")
+	.map((s) => s.trim().toLowerCase())
+	.filter(Boolean);
 // Root of the SDK default per-project session dirs — chat transcripts live in
 // <SESSION_DIR_ROOT>/--<cwd>--/, shared with the pi CLI/TUI (getAgentDir
 // honors PI_CODING_AGENT_DIR).
@@ -139,7 +163,77 @@ if (existsSync(webDist)) {
 }
 
 const httpServer = createServer(app);
-const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
+const wss = new WebSocketServer({ noServer: true });
+
+// ---------------------------------------------------------------------------
+// Origin / Host admission for WebSocket upgrades.
+//
+// Browsers attach an Origin header; non-browser clients (curl, ws scripts)
+// usually don't — they're admitted by the network layer / reverse proxy.
+// Rules (checked in order):
+//   4. No Origin header → admit (non-browser client).
+//   5. Anything else → 403 + close.
+//
+// Dev-mode note: the Vite dev server (:5173) proxies /ws to the backend on
+// :8788, so their authorities differ — the dev:server script sets
+// PI_WEB_ALLOW_ORIGINS=http://localhost:5173,http://127.0.0.1:5173 for that.
+// LAN / reverse-proxy setups add their own origin the same way.
+// ---------------------------------------------------------------------------
+
+/** "host" or "host:port" → { hostname, port }. */
+function parseAuthority(a: string): { hostname: string; port: string } {
+	try {
+		const u = new URL(`http://${a}`);
+		return { hostname: u.hostname.toLowerCase(), port: u.port || "80" };
+	} catch {
+		return { hostname: "", port: "" };
+	}
+}
+
+function originAllowed(req: IncomingMessage): boolean {
+	const hostHeader = (req.headers.host ?? "").toLowerCase();
+	const host = parseAuthority(hostHeader);
+	if (ALLOW_HOSTS.length > 0 && !ALLOW_HOSTS.includes(host.hostname)) {
+		return false;
+	}
+	const origin = req.headers.origin;
+	if (!origin) return true; // non-browser client
+	const o = origin.toLowerCase();
+	if (ALLOW_ORIGINS.includes(o)) return true;
+	if (o === "null") return false; // file:// pages etc. are not trusted
+	const ori = parseAuthority(o.replace(/^[a-z]+:\/\//, ""));
+	if (ori.hostname === host.hostname && ori.port === host.port) return true;
+	// Browsers treat host:port pairs on the SAME host as different origins —
+	// do not accept them. (Dev-mode proxying is handled by PI_WEB_ALLOW_ORIGINS
+	// set in the dev:server script; LAN/reverse-proxy setups add their origin.)
+	return false;
+	return false;
+}
+
+httpServer.on("upgrade", (req, socket, head) => {
+	let pathname = "/";
+	try {
+		pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+	} catch {
+		/* fall through to the path check below */
+	}
+	if (pathname !== "/ws") {
+		socket.destroy();
+		return;
+	}
+	if (!originAllowed(req)) {
+		// Reject cross-origin browser pages outright. The browser sees a failed
+		// WS connect; the page's own reconnect loop then backs off and retries.
+		socket.write(
+			"HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+		);
+		socket.destroy();
+		return;
+	}
+	wss.handleUpgrade(req, socket, head, (ws) => {
+		wss.emit("connection", ws, req);
+	});
+});
 
 // Heartbeat: lets clients detect half-open connections (server killed without
 // closing sockets, sleep/wake, network partitions). Idle connections otherwise
@@ -225,6 +319,9 @@ function scheduleQuit(): boolean {
 service.onQuit = scheduleQuit;
 
 wss.on("connection", (ws) => {
+	// Count attached sockets (the control socket reports REAL sockets, not
+	// cached client-session objects).
+	service.noteSocketOpen();
 	let clientId: string | null = null;
 	let closed = false;
 	/** Commands received while the session is still being created — replayed after attach. */
@@ -449,6 +546,19 @@ wss.on("connection", (ws) => {
 					for (const m of queued) dispatch(m);
 				})
 				.catch((err: unknown) => {
+					// Admission refused (quiesce): close the socket so the browser
+					// reconnect loop keeps retrying until admission reopens. Do NOT
+					// leave a half-alive connection that can only show an error.
+					if (err instanceof QuiesceRejectedError) {
+						closed = true;
+						if (ws.readyState === WebSocket.OPEN) {
+							ws.close(4403, "quiesced");
+						}
+						ws.terminate?.();
+						return;
+					}
+					// Real init failure (bad agent dir etc.) — keep the connection
+					// open so the user can see the error and fix it.
 					send({
 						type: "notice",
 						level: "error",
@@ -462,6 +572,7 @@ wss.on("connection", (ws) => {
 	});
 
 	ws.on("close", () => {
+		service.noteSocketClose();
 		closed = true;
 		pending = [];
 		if (clientId) service.detach(clientId, send);
@@ -492,15 +603,20 @@ if (process.env[RESTART_CHILD_ENV] === "1") {
 	}
 }
 
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT, HOST, () => {
 	console.log("");
 	console.log("  ⚡ pi-web-ui — web chat for the pi coding agent");
 	console.log(`    http://localhost:${PORT}`);
 	console.log(`    workspace   : ${CWD}`);
 	console.log(`    session dir : ${SESSION_DIR_ROOT}`);
 	console.log(`    pi SDK      : v${VERSION}`);
+	console.log(`    bind        : ${HOST}:${PORT}`);
 	console.log("");
 });
+
+// Local control socket (status / quiesce / unquiesce) — same data dir the
+// CLI uses, so `pi-web-ui server status|quiesce|unquiesce` just works.
+const stopControl = startControlServer({ service, dataDir: DATA_DIR, port: PORT });
 
 let shuttingDown = false;
 async function shutdown(): Promise<void> {
@@ -508,6 +624,7 @@ async function shutdown(): Promise<void> {
 	shuttingDown = true;
 	console.log("\nshutting down…");
 	clearInterval(heartbeatTimer);
+	stopControl();
 	await service.disposeAll();
 	wss.close();
 	httpServer.close();

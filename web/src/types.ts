@@ -418,7 +418,7 @@ export interface UiProviderConfig {
 	baseUrl?: string;
 	apiKey?: string;
 	authHeader?: boolean;
-	headers?: Record<string, string>;
+	/** headers never reach the browser (may contain Authorization / API keys). */
 	models: UiModelConfigEntry[];
 }
 

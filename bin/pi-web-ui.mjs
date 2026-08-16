@@ -23,6 +23,7 @@
  * PI_CODING_AGENT_DIR。
  */
 import { spawnSync } from "node:child_process";
+import { createConnection } from "node:net";
 import { get as httpGet } from "node:http";
 import {
 	chmodSync,
@@ -60,6 +61,8 @@ const HELP = `pi-web-ui v${pkg.version} — web chat for the pi coding agent
   pi-web-ui server shortcut [选项]        在桌面创建「一键启动」图标（启动服务并打开浏览器）
   pi-web-ui server uninstall [选项]       卸载系统服务（同时移除桌面图标）
   pi-web-ui server start|stop|restart|status [选项]
+  pi-web-ui server quiesce [选项]          进入排空模式：拒绝新的对话/消息/编辑，存量运行继续跑完
+  pi-web-ui server unquiesce [选项]        解除排空模式，恢复接收新工作
   pi-web-ui --version / --help
 
 server 选项:
@@ -1069,6 +1072,90 @@ function uninstallWindows(opts) {
 	console.log(`🗑  已移除桌面快捷方式`);
 }
 
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Local control socket (status / quiesce / unquiesce). The server listens on
+// a mode-0600 Unix socket (POSIX) or a named pipe (Windows) under its data
+// dir; same path rules as server/control-socket.ts so the CLI and server
+// always agree without sharing code.
+// ---------------------------------------------------------------------------
+
+/** Resolve the control socket path for the given options. */
+function controlPath(opts) {
+	const dir = opts.dataDir
+		? resolve(opts.dataDir)
+		: process.env.PI_WEB_DATA_DIR
+			? resolve(process.env.PI_WEB_DATA_DIR)
+			: join(homedir(), ".pi-web");
+	return isWin
+		? `\\\\.\\pipe\\pi-web-ui-${String(opts.port ?? process.env.PORT ?? "8787")}`
+		: join(dir, "pi-web-ui.sock");
+}
+
+/** Send one control command to a RUNNING server; resolves null if unreachable. */
+function controlCommand(opts, cmd) {
+	const path = controlPath(opts);
+	return new Promise((resolvePromise) => {
+		const sock = createConnection(path);
+		let done = false;
+		const finish = (v) => {
+			if (done) return;
+			done = true;
+			clearTimeout(timer);
+			sock.destroy();
+			resolvePromise(v);
+		};
+		const timer = setTimeout(() => finish(null), 3000);
+		let buf = "";
+		sock.on("connect", () => sock.write(JSON.stringify({ cmd }) + "\n"));
+		sock.on("data", (chunk) => {
+			buf += chunk.toString("utf8");
+			const nl = buf.indexOf("\n");
+			if (nl >= 0) {
+				try {
+					finish(JSON.parse(buf.slice(0, nl)));
+				} catch {
+					finish(null);
+				}
+			}
+		});
+		sock.on("error", () => finish(null));
+		sock.on("close", () => finish(null));
+	});
+}
+
+/** Append the live server status (via the control socket) to `server status`. */
+async function printLiveStatus(opts) {
+	const st = await controlCommand(opts, "status");
+	if (!st || !st.ok) {
+		console.log("   (服务器未运行或控制通道不可达 — 启动后可查 server status 实时信息)");
+		return;
+	}
+	console.log("   --- 实时状态 (control socket) ---");
+	console.log(`   版本 : ${st.version} · PID ${st.pid}`);
+	console.log(`   目录 : ${st.cwd}`);
+	console.log(
+		`   排空 : ${st.quiesced ? `是（自 ${new Date(st.quiescedSince).toLocaleString()}）` : "否"}`,
+	);
+	console.log(
+		`   连接 : ${st.connectedClients} 个浏览器 · ${st.activeConversations} 个运行中对话 · ${st.pendingMessages} 条排队消息`,
+	);
+}
+
+/** `server quiesce|unquiesce` — toggle the admission gate on a RUNNING server. */
+async function setQuiesce(opts, on) {
+	const st = await controlCommand(opts, on ? "quiesce" : "unquiesce");
+	if (!st || !st.ok) {
+		fail(`服务器未运行或控制通道不可达（${controlPath(opts)}）`);
+	}
+	console.log(
+		on
+			? "⏸  已进入排空模式（quiesce）：拒绝新的对话/消息/编辑，存量运行继续跑完。\n" +
+				"    跑完后用 pi-web-ui server unquiesce 恢复。"
+			: "▶  已解除排空模式（unquiesce）：恢复接收新的对话/消息/编辑。",
+	);
+}
+
 function controlService(action, opts) {
 	const name = opts.name ?? "pi-web-ui";
 
@@ -1279,12 +1366,21 @@ async function serverCmd(argv) {
 		case "start":
 		case "stop":
 		case "restart":
-		case "status":
 			controlService(action, opts);
+			break;
+		case "status":
+			controlService("status", opts);
+			await printLiveStatus(opts);
+			break;
+		case "quiesce":
+			await setQuiesce(opts, true);
+			break;
+		case "unquiesce":
+			await setQuiesce(opts, false);
 			break;
 		default:
 			fail(
-				`未知操作: ${action}（install / shortcut / uninstall / start / stop / restart / status）`,
+				`未知操作: ${action}（install / shortcut / uninstall / start / stop / restart / status / quiesce / unquiesce）`,
 			);
 	}
 }

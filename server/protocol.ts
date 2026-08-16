@@ -442,7 +442,8 @@ export interface UiProviderConfig {
 	baseUrl?: string;
 	apiKey?: string;
 	authHeader?: boolean;
-	headers?: Record<string, string>;
+	/** headers are NOT returned to the browser — they can contain Authorization
+	 *  / API-key values; saveModelConfig preserves them server-side. */
 	models: UiModelConfigEntry[];
 }
 

@@ -31,6 +31,7 @@ import {
 	getAgentDir,
 	ModelRuntime,
 	SessionManager,
+	VERSION,
 	type AgentSession,
 	type AgentSessionEvent,
 	type AgentSessionRuntime,
@@ -73,6 +74,19 @@ const WIDGET_REFRESH_MS = 2000;
 const WIDGET_WIDTH = 80;
 /** Preview panel cap: only the first 512KB of a file is ever read/sent. */
 const MAX_PREVIEW_BYTES = 512 * 1024;
+
+/** Thrown when the service is quiesced (draining) and the request is NEW work
+ *  the admission controller refuses: a brand-new client attach, a prompt,
+ *  a fork, a session resume, or a goal wizard start. index.ts closes the
+ *  WebSocket with 4403 so the browser reconnect loop can retry after the
+ *  server reopens admission (see AgentService.quiesce). */
+export class QuiesceRejectedError extends Error {
+	readonly code = "QUIESCED";
+	constructor(detail: string) {
+		super(`服务器正在排空存量工作（quiesce）——${detail}`);
+		this.name = "QuiesceRejectedError";
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Preview kind classification. The preview panel only opens image / video /
@@ -1193,6 +1207,9 @@ function conversationTitle(session: AgentSession): string {
 
 export class ClientSession {
 	readonly clientId: string;
+	/** Set by AgentService.attach: reflects the SERVICE-wide quiesce flag
+	 *  (server draining — new work rejected). Default false for direct use. */
+	isQuiesced: () => boolean = () => false;
 	cwd: string;
 	/** pi config dir (auth/models/skills). */
 	private readonly agentDir: string;
@@ -2366,7 +2383,8 @@ export class ClientSession {
 					baseUrl: p.baseUrl as string | undefined,
 					apiKey: p.apiKey as string | undefined,
 					authHeader: p.authHeader as boolean | undefined,
-					headers: p.headers as Record<string, string> | undefined,
+					// headers are intentionally NOT sent to the browser — they may
+					// contain Authorization / API-key values; kept server-side only.
 					models,
 				};
 			},
@@ -2404,14 +2422,17 @@ export class ClientSession {
 		}
 		try {
 			const { providers } = this.readModelsConfig();
+			// headers never reach the browser, so the incoming config can't carry
+			// them — preserve the previously stored values when they are absent.
+			const prevHeaders = providers[pid]?.headers;
 			providers[pid] = {
 				...(config.name?.trim() ? { name: config.name.trim() } : {}),
 				...(config.api?.trim() ? { api: config.api.trim() } : {}),
 				...(config.baseUrl?.trim() ? { baseUrl: config.baseUrl.trim() } : {}),
 				...(config.apiKey?.trim() ? { apiKey: config.apiKey.trim() } : {}),
 				...(config.authHeader ? { authHeader: true } : {}),
-				...(config.headers && Object.keys(config.headers).length > 0
-					? { headers: config.headers }
+				...(prevHeaders && Object.keys(prevHeaders).length > 0
+					? { headers: prevHeaders }
 					: {}),
 				models,
 			};
@@ -2926,6 +2947,43 @@ export class ClientSession {
 	// Commands
 	// ---------------------------------------------------------------------------
 
+	/** True when the service is draining (quiesced): emits a rejection notice
+	 *  and returns true. Guards every NEW-work entry point (prompt / new chat /
+	 *  edit-resend / session resume / goal wizard) — existing runs keep going.
+	 *  Called BEFORE any LLM/token work starts so quiesce is a hard admission
+	 *  gate, not a best-effort hint. */
+	private quiesceBlocked(): boolean {
+		if (!this.isQuiesced()) return false;
+		this.emit({
+			type: "notice",
+			level: "error",
+			text: "服务器正在排空存量工作（quiesce），已拒绝新的对话/消息/编辑。存量运行会继续跑完；用 pi-web-ui server unquiesce 可恢复。",
+		});
+		this.flushSnapshot();
+		return true;
+	}
+
+	/** Conversations with an in-flight run — active work for quiesce status. */
+	activeConversations(): number {
+		let n = 0;
+		for (const c of this.convs.values()) {
+			try {
+				if (c.session.isStreaming) n += 1;
+			} catch {
+				// session being replaced — not running
+			}
+		}
+		return n;
+	}
+
+	/** Messages queued in the SDK (steer + follow-up) — pending work for
+	 *  quiesce status. Quiesce refuses to add more, so this only drains. */
+	pendingMessages(): number {
+		let n = 0;
+		for (const c of this.convs.values()) n += c.queueFollowUp + c.queueSteering;
+		return n;
+	}
+
 	async prompt(
 		text: string,
 		attachments?: {
@@ -2951,6 +3009,10 @@ export class ClientSession {
 				this.flushSnapshot();
 				return;
 			}
+			// Native commands above are pure config tweaks (no tokens) — allow them
+			// even while quiesced. Everything that reaches the SDK is NEW work and
+			// is refused until admission reopens.
+			if (this.quiesceBlocked()) return;
 			// Attach files as independent nextTurn context messages (asides) so the
 			// user message stays clean; they render as separate attachment cards.
 			const asides = await this.buildAttachmentMessages(attachments);
@@ -3672,6 +3734,7 @@ export class ClientSession {
 	}
 
 	async newChat(): Promise<void> {
+		if (this.quiesceBlocked()) return;
 		// Reuse an already-open blank conversation instead of piling up new ones
 		// on every click: if the active chat has no messages it IS the new chat
 		// (focus already on it); otherwise switch to the first blank one (under
@@ -3859,6 +3922,7 @@ export class ClientSession {
 
 	/** Switch the active session to a persisted one (from listSessions). */
 	async switchSession(path: string): Promise<void> {
+		if (this.quiesceBlocked()) return;
 		try {
 			await this.runtime.switchSession(path);
 			await this.bindSession();
@@ -3914,6 +3978,7 @@ export class ClientSession {
 	 * session list, so nothing is ever lost.
 	 */
 	async editMessage(messageId: string, text: string): Promise<void> {
+		if (this.quiesceBlocked()) return;
 		const trimmed = text.trim();
 		if (!trimmed) {
 			this.emit({
@@ -4481,6 +4546,7 @@ export class ClientSession {
 			locked?: boolean;
 		},
 	): Promise<void> {
+		if (this.quiesceBlocked()) return;
 		const draft = (text ?? "").trim();
 		if (!draft) return;
 		if (this.goalWizardRunning) {
@@ -5245,6 +5311,15 @@ export class ClientSession {
 
 export class AgentService {
 	private clients = new Map<string, ClientSession>();
+	/** Quiesce (draining) state — the service refuses NEW work (prompts, forks,
+	 *  session resumes, new clients) so a deploy/upgrade/backup can stop cleanly
+	 *  once existing runs finish. Controlled via the local control socket:
+	 *  `pi-web-ui server quiesce|unquiesce`. */
+	private quiesced = false;
+	private quiescedAt = 0;
+	/** Attached browser sockets (reported by index.ts on open/close) — the
+	 *  control socket reports real sockets, not cached client-session objects. */
+	private socketCount = 0;
 	private pending = new Map<string, Promise<ClientSession>>();
 	private stateStore: ClientStateStore;
 	/**
@@ -5263,6 +5338,75 @@ export class AgentService {
 	}
 
 	/** Get or create the session for a client, racing attach calls safely. */
+	/** True while the service is draining — new work is refused. */
+	isQuiesced(): boolean {
+		return this.quiesced;
+	}
+
+	/** Enter quiesce: stop admitting new work. Existing runs keep going. */
+	quiesce(): void {
+		this.quiesced = true;
+		this.quiescedAt = Date.now();
+	}
+
+	/** Leave quiesce: admit new work again. */
+	unquiesce(): void {
+		this.quiesced = false;
+		this.quiescedAt = 0;
+	}
+
+	/** Snapshot for the control socket / status command. */
+	quiesceInfo(): { quiesced: boolean; quiescedSince?: number } {
+		return this.quiesced
+			? { quiesced: true, quiescedSince: this.quiescedAt }
+			: { quiesced: false };
+	}
+
+	/** Aggregate across every client session: conversations with in-flight runs. */
+	activeConversations(): number {
+		let n = 0;
+		for (const cs of this.clients.values()) n += cs.activeConversations();
+		return n;
+	}
+
+	/** Aggregate across every client session: messages queued in the SDK. */
+	pendingMessages(): number {
+		let n = 0;
+		for (const cs of this.clients.values()) n += cs.pendingMessages();
+		return n;
+	}
+
+	/** index.ts calls this when a browser socket opens/closes. */
+	noteSocketOpen(): void {
+		this.socketCount += 1;
+	}
+	noteSocketClose(): void {
+		this.socketCount = Math.max(0, this.socketCount - 1);
+	}
+
+	/** Full status for the control socket / `server status` command. */
+	serviceStatus(): {
+		pid: number;
+		version: string;
+		cwd: string;
+		quiesced: boolean;
+		quiescedSince?: number;
+		connectedClients: number;
+		activeConversations: number;
+		pendingMessages: number;
+	} {
+		return {
+			pid: process.pid,
+			version: VERSION,
+			cwd: this.cwd,
+			...this.quiesceInfo(),
+			connectedClients: this.socketCount,
+			activeConversations: this.activeConversations(),
+			pendingMessages: this.pendingMessages(),
+		};
+	}
+
+	/** Get or create the session for a client, racing attach calls safely. */
 	async attach(
 		clientId: string,
 		send: (msg: ServerMessage) => void,
@@ -5274,6 +5418,13 @@ export class AgentService {
 				cs = await inflight;
 			} else {
 				// Restore this client's last-used workspace when it still exists;
+				// Admission gate: while quiesced, only clients with an EXISTING
+				// session may attach (they can watch their runs drain); brand-new
+				// clients are refused — index.ts closes their socket (4403) and the
+				// browser reconnect loop retries after admission reopens.
+				if (this.quiesced) {
+					throw new QuiesceRejectedError("新连接被拒绝，请等服务器恢复后重试");
+				}
 				// otherwise fall back to the server's configured default cwd.
 				let cwd = this.cwd;
 				const saved = this.stateStore.get(clientId);
@@ -5310,6 +5461,7 @@ export class AgentService {
 		// Forward hooks (set once by index.ts) to every session.
 		cs.onUpdateReady = this.onUpdateReady;
 		cs.onQuit = this.onQuit;
+		cs.isQuiesced = () => this.quiesced;
 		return cs;
 	}
 
