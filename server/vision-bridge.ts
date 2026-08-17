@@ -70,8 +70,11 @@ export function findVisionModels(runtime: ModelRuntime): VisionModelRef[] {
  * Evidence-first transcription prompt, modeled on modlens' output contract:
  * full verbatim text, reading-order layout blocks, entities/relations, chart
  * axes & data. Emphasizes honesty over hallucination.
+ *
+ * Exported so the settings panel can offer a custom prompt (append to this
+ * default or replace it entirely).
  */
-const SYSTEM_PROMPT = `You are a vision bridge for a text-only language model. You receive one or more images and must transcribe them into precise, structured text evidence so another model that cannot see images can answer questions about them accurately.
+export const SYSTEM_PROMPT = `You are a vision bridge for a text-only language model. You receive one or more images and must transcribe them into precise, structured text evidence so another model that cannot see images can answer questions about them accurately.
 
 Follow these rules:
 1. Transcribe ALL visible text verbatim, preserving wording, spelling, punctuation and line breaks. This is the most important part — the reader relies on your transcription, not on the image.
@@ -81,6 +84,23 @@ Follow these rules:
 5. If part of the image is too blurry/low-resolution to read, say "（读不清）" or "unclear" for that part — NEVER invent or guess content you cannot see.
 6. If there are multiple images, address them in order (图 1 / Image 1, 图 2 / Image 2, ...).
 7. Output only the transcript. No preamble, no commentary about the image itself.`;
+
+/**
+ * Assemble the final vision-model system prompt from the settings-panel prefs.
+ * mode "append": custom text appended after the default prompt (empty custom =
+ * pure default). mode "replace": custom text REPLACES the default prompt, but
+ * an empty custom text still falls back to the default (never send an empty
+ * system prompt to the vision model).
+ */
+export function buildVisionBridgePrompt(
+	mode: "append" | "replace",
+	custom: string,
+): string {
+	const text = custom?.trim() ?? "";
+	if (mode === "replace" && text) return text;
+	if (text) return `${SYSTEM_PROMPT}\n\n${text}`;
+	return SYSTEM_PROMPT;
+}
 
 /** Per-batch user instruction appended after the images. */
 function buildUserPrompt(count: number): string {
@@ -102,6 +122,8 @@ export interface TranscribeOptions {
 	signal?: AbortSignal;
 	/** Override the provider/model used (defaults to the caller's choice). */
 	model?: VisionModel;
+	/** Custom system prompt (defaults to the built-in SYSTEM_PROMPT). */
+	systemPrompt?: string;
 }
 
 /**
@@ -139,7 +161,7 @@ export async function transcribeImages(
 				: "image/png",
 		}));
 		const context: VisionContext = {
-			systemPrompt: SYSTEM_PROMPT,
+			systemPrompt: options.systemPrompt ?? SYSTEM_PROMPT,
 			messages: [
 				{
 					role: "user",

@@ -217,11 +217,15 @@ pi-web-ui/
 - **缓存**：`visionBridgeCache` 按批次 hash（name + base64 前 48 字符）缓存转写文本——编辑重问重发
   相同图片不再重复耗视觉 token。
 - **无视觉模型时**：warning notice 提示「未找到可用的视觉模型」+ 图片原样发送（现状）。
-- **设置面板可指定模型/开关**（`SettingsModal` 视觉桥区块，走 `set_settings` + `UiSettingsState`，
+- **设置面板可指定模型/开关/提示词**（`SettingsModal` 视觉桥区块，走 `set_settings` + `UiSettingsState`，
   存 client-state.json 按客户端持久化）：①开关 `visionBridgeEnabled`（默认开；关掉后图片原样发送
   + warning notice「视觉桥已在设置中关闭」）；②转写模型 `visionBridgeModel`（"provider/id"，默认
   null=自动选第一个；服务端 `buildAttachmentMessages` 里 `resolveReviewModel` 解析并校验
-  `getModel().input` 含 image，无效则回退自动发现）。`settings_state` 带 `visionModels`（
+  `getModel().input` 含 image，无效则回退自动发现）；③转写提示词 `visionBridgePromptMode`
+  （"append"/"replace"，语义同 promptMode）+ `visionBridgePrompt`（自定义文本，空 = 内置默认）——
+  经 `buildVisionBridgePrompt`（vision-bridge.ts 导出）组装后传给 `transcribeImages` 的
+  `systemPrompt`；append 在默认提示词后追加，replace 整体替换（空文本仍回退默认）；**提示词
+  纳入批次缓存键**——改提示词后同图重发不再命中旧转写缓存。`settings_state` 带 `visionModels`（
   `collectVisionModels()` = `findVisionModels` 结果）供下拉选择；预设（preset）**不包含**视觉桥
   偏好（`SettingsPreset extends Omit<ClientSettings, "visionBridge…">`，apply 时保留当前值）；
   `setSettings` 里视觉桥字段变更**不触发** `applyRuntimeSettings()`（无需 reload，下次 prompt 即生效）。

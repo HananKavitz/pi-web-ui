@@ -316,6 +316,10 @@ export type ClientMessage =
 			/** Vision bridge on/off + preferred "provider/id" model (null = auto). */
 			visionBridgeEnabled?: boolean;
 			visionBridgeModel?: string | null;
+			/** Vision-bridge transcription prompt: mode (append/replace, same
+			 *  semantics as promptMode) + custom text (empty = built-in default). */
+			visionBridgePromptMode?: "append" | "replace";
+			visionBridgePrompt?: string;
 	  }
 	/** Save the CURRENT settings as a named preset (overwrites if it exists). */
 	| { type: "save_preset"; name: string }
@@ -532,6 +536,11 @@ export interface UiSettingsState {
 	visionBridgeEnabled: boolean;
 	/** Preferred vision model as "provider/id", or null = auto-detect first. */
 	visionBridgeModel: string | null;
+	/** Vision-bridge transcription prompt mode: append to the built-in default
+	 *  prompt, or replace it entirely (empty text = built-in default). */
+	visionBridgePromptMode: "append" | "replace";
+	/** Custom vision-bridge transcription prompt text. */
+	visionBridgePrompt: string;
 	/** Vision-capable configured models available on this machine. */
 	visionModels: UiVisionBridgeModel[];
 	skills: UiSkillInfo[];

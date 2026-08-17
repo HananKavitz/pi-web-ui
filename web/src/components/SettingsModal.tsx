@@ -56,12 +56,18 @@ export function SettingsModal({ chat, send, onClose }: SettingsModalProps) {
 	const [promptDraft, setPromptDraft] = useState("");
 	const [promptMode, setPromptMode] = useState<"append" | "replace">("append");
 	const promptFocus = useRef(false);
+	// Vision-bridge prompt draft — same local-edit/re-sync pattern as above.
+	const [vbPromptDraft, setVbPromptDraft] = useState("");
+	const [vbPromptMode, setVbPromptMode] = useState<"append" | "replace">("append");
+	const vbPromptFocus = useRef(false);
 	const [presetName, setPresetName] = useState("");
 
 	useEffect(() => {
 		if (!settings) return;
 		setPromptMode(settings.promptMode);
 		if (!promptFocus.current) setPromptDraft(settings.customSystemPrompt);
+		setVbPromptMode(settings.visionBridgePromptMode);
+		if (!vbPromptFocus.current) setVbPromptDraft(settings.visionBridgePrompt);
 	}, [settings]);
 
 	if (!settings) return null;
@@ -76,6 +82,8 @@ export function SettingsModal({ chat, send, onClose }: SettingsModalProps) {
 		disabledExtensions?: string[];
 		visionBridgeEnabled?: boolean;
 		visionBridgeModel?: string | null;
+		visionBridgePromptMode?: "append" | "replace";
+		visionBridgePrompt?: string;
 	}) => send({ type: "set_settings", ...patch });
 
 	const toggleSkill = (s: UiSkillInfo) => {
@@ -239,6 +247,49 @@ export function SettingsModal({ chat, send, onClose }: SettingsModalProps) {
 								))}
 							</select>
 						</div>
+					)}
+					{settings.visionBridgeEnabled && (
+						<div className="set-mode-row">
+							<label className="set-field-label">
+								{t("visionBridgePromptMode")}
+							</label>
+							<select
+								className="set-select"
+								value={vbPromptMode}
+								onChange={(e) => {
+									const mode = e.target.value as "append" | "replace";
+									setVbPromptMode(mode);
+									setPartial({ visionBridgePromptMode: mode });
+								}}
+							>
+								<option value="append">{t("promptModeAppend")}</option>
+								<option value="replace">{t("promptModeReplace")}</option>
+							</select>
+						</div>
+					)}
+					{settings.visionBridgeEnabled && (
+						<textarea
+							className="set-prompt-input"
+							rows={4}
+							placeholder={t("visionBridgePromptPlaceholder")}
+							value={vbPromptDraft}
+							onFocus={() => (vbPromptFocus.current = true)}
+							onBlur={() => {
+								vbPromptFocus.current = false;
+								setPartial({
+									visionBridgePromptMode: vbPromptMode,
+									visionBridgePrompt: vbPromptDraft,
+								});
+							}}
+							onChange={(e) => setVbPromptDraft(e.target.value)}
+						/>
+					)}
+					{settings.visionBridgeEnabled && (
+						<p className="set-hint">
+							{vbPromptMode === "append"
+								? t("visionBridgePromptAppendHint")
+								: t("visionBridgePromptReplaceHint")}
+						</p>
 					)}
 					{settings.visionBridgeEnabled &&
 						(settings.visionModels.length === 0 ? (

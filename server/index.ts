@@ -509,6 +509,8 @@ wss.on("connection", (ws) => {
 					disabledExtensions: msg.disabledExtensions,
 					visionBridgeEnabled: msg.visionBridgeEnabled,
 					visionBridgeModel: msg.visionBridgeModel,
+					visionBridgePromptMode: msg.visionBridgePromptMode,
+					visionBridgePrompt: msg.visionBridgePrompt,
 				});
 				break;
 			case "save_preset":

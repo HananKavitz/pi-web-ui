@@ -64,6 +64,10 @@ const mock = createServer(async (req, res) => {
 		visionRequestCount++;
 		visionRequests.push({
 			model,
+			systemPrompt:
+				typeof payload.messages?.[0]?.content === "string"
+					? payload.messages[0].content
+					: null,
 			imageBlocks: lastMsg.content.filter(
 				(b) => b.type === "image_url" || b.type === "image",
 			).length,
@@ -529,6 +533,131 @@ try {
 		"bridged card carries the transcript text",
 		pathText.includes("<vision-bridge>") &&
 			pathText.includes(TRANSCRIPT.trim()),
+	);
+
+	// -- custom transcription prompt (settings-panel) -------------------------
+	// The vision-bridge prompt is configurable: "append" appends custom text
+	// after the built-in default prompt; "replace" replaces it entirely. The
+	// mock now records the system prompt it receives for each vision request.
+	const DEFAULT_PROMPT_MARKER = "You are a vision bridge";
+	c.send({
+		type: "set_settings",
+		visionBridgePromptMode: "append",
+		visionBridgePrompt: "【自定义：请额外输出图片主色调】",
+	});
+	await c.waitFor(
+		"settings_state",
+		10000,
+		(m) =>
+			m.settings?.visionBridgePromptMode === "append" &&
+			m.settings?.visionBridgePrompt === "【自定义：请额外输出图片主色调】",
+	);
+	const before4 = visionRequestCount;
+	c.send({
+		type: "prompt",
+		text: "用追加提示词看图",
+		attachments: [
+			{
+				path: "",
+				key: "t5",
+				name: "append.png",
+				mode: "inline",
+				imageData: IMG_B64,
+				mimeType: "image/png",
+			},
+		],
+	});
+	await c.waitFor(
+		"notice",
+		25000,
+		(m) => m.text && m.text.includes("转写完成"),
+	);
+	const appendReq = visionRequests.at(-1);
+	check(
+		"append mode: custom text appended to the built-in default prompt",
+		visionRequestCount === before4 + 1 &&
+			typeof appendReq?.systemPrompt === "string" &&
+			appendReq.systemPrompt.includes(DEFAULT_PROMPT_MARKER) &&
+			appendReq.systemPrompt.includes("【自定义：请额外输出图片主色调】"),
+	);
+
+	c.send({
+		type: "set_settings",
+		visionBridgePromptMode: "replace",
+		visionBridgePrompt: "完全自定义的转写提示词，只输出表格数据。",
+	});
+	await c.waitFor(
+		"settings_state",
+		10000,
+		(m) => m.settings?.visionBridgePromptMode === "replace",
+	);
+	const before5 = visionRequestCount;
+	c.send({
+		type: "prompt",
+		text: "用替换提示词看图",
+		attachments: [
+			{
+				path: "",
+				key: "t6",
+				name: "replace.png",
+				mode: "inline",
+				imageData: IMG_B64,
+				mimeType: "image/png",
+			},
+		],
+	});
+	await c.waitFor(
+		"notice",
+		25000,
+		(m) => m.text && m.text.includes("转写完成"),
+	);
+	const replaceReq = visionRequests.at(-1);
+	check(
+		"replace mode: built-in prompt fully replaced by custom text",
+		visionRequestCount === before5 + 1 &&
+			typeof replaceReq?.systemPrompt === "string" &&
+			replaceReq.systemPrompt.includes("完全自定义的转写提示词") &&
+			!replaceReq.systemPrompt.includes(DEFAULT_PROMPT_MARKER),
+	);
+
+	// Custom prompt also invalidates the transcript cache for the same image:
+	// changing the prompt must NOT reuse a cached transcript made with the old
+	// prompt. (Re-send the SAME image/name that was cached earlier in this run.)
+	const before6 = visionRequestCount;
+	c.send({
+		type: "prompt",
+		text: "再看一遍（提示词已改，不应命中缓存）",
+		attachments: [
+			{
+				path: "",
+				key: "t7",
+				name: "append.png",
+				mode: "inline",
+				imageData: IMG_B64,
+				mimeType: "image/png",
+			},
+		],
+	});
+	await c.waitFor(
+		"notice",
+		25000,
+		(m) => m.text && m.text.includes("转写完成"),
+	);
+	check(
+		"custom prompt change invalidates the transcript cache",
+		visionRequestCount === before6 + 1,
+	);
+
+	// Restore defaults so a rerun behaves the same from the start.
+	c.send({
+		type: "set_settings",
+		visionBridgePromptMode: "append",
+		visionBridgePrompt: "",
+	});
+	await c.waitFor(
+		"settings_state",
+		10000,
+		(m) => m.settings?.visionBridgePromptMode === "append",
 	);
 
 

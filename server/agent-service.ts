@@ -70,6 +70,7 @@ import {
 	TerminalManager,
 } from "./terminals.js";
 import {
+	buildVisionBridgePrompt,
 	findVisionModels,
 	transcribeImages,
 } from "./vision-bridge.js";
@@ -1004,6 +1005,11 @@ interface ClientSettings {
 	visionBridgeEnabled: boolean;
 	/** Preferred vision model as "provider/id", or null = auto-detect first. */
 	visionBridgeModel: string | null;
+	/** Vision-bridge transcription prompt mode: append to the built-in default
+	 *  prompt, or replace it entirely (same semantics as promptMode). */
+	visionBridgePromptMode: PromptMode;
+	/** Custom vision-bridge transcription prompt text (empty = built-in default). */
+	visionBridgePrompt: string;
 }
 
 /** A named combo of prompt + skill/extension toggles the user can re-apply. */
@@ -1011,7 +1017,13 @@ interface ClientSettings {
  *  Vision-bridge prefs are intentionally NOT part of a preset — they stay
  *  whatever the user currently has set when a preset is applied. */
 interface SettingsPreset
-	extends Omit<ClientSettings, "visionBridgeEnabled" | "visionBridgeModel"> {
+	extends Omit<
+		ClientSettings,
+		| "visionBridgeEnabled"
+		| "visionBridgeModel"
+		| "visionBridgePromptMode"
+		| "visionBridgePrompt"
+	> {
 	name: string;
 }
 
@@ -1131,6 +1143,9 @@ class ClientStateStore {
 			disabledExtensions: s?.settings?.disabledExtensions ?? [],
 			visionBridgeEnabled: s?.settings?.visionBridgeEnabled ?? true,
 			visionBridgeModel: s?.settings?.visionBridgeModel ?? null,
+			visionBridgePromptMode:
+				s?.settings?.visionBridgePromptMode === "replace" ? "replace" : "append",
+			visionBridgePrompt: s?.settings?.visionBridgePrompt ?? "",
 		};
 	}
 
@@ -1147,6 +1162,12 @@ class ClientStateStore {
 			visionBridgeEnabled:
 				settings.visionBridgeEnabled ?? cur.visionBridgeEnabled ?? true,
 			visionBridgeModel: settings.visionBridgeModel ?? cur.visionBridgeModel ?? null,
+			visionBridgePromptMode:
+				settings.visionBridgePromptMode ??
+				cur.visionBridgePromptMode ??
+				"append",
+			visionBridgePrompt:
+				settings.visionBridgePrompt ?? cur.visionBridgePrompt ?? "",
 		};
 		this.save();
 	}
@@ -2896,6 +2917,8 @@ export class ClientSession {
 				customSystemPrompt: this.settings.customSystemPrompt,
 				visionBridgeEnabled: this.settings.visionBridgeEnabled,
 				visionBridgeModel: this.settings.visionBridgeModel,
+				visionBridgePromptMode: this.settings.visionBridgePromptMode,
+				visionBridgePrompt: this.settings.visionBridgePrompt,
 				visionModels: this.collectVisionModels(),
 				disabledSkills: [...this.settings.disabledSkills],
 				disabledExtensions: [...this.settings.disabledExtensions],
@@ -2928,6 +2951,8 @@ export class ClientSession {
 		disabledExtensions?: string[];
 		visionBridgeEnabled?: boolean;
 		visionBridgeModel?: string | null;
+		visionBridgePromptMode?: PromptMode;
+		visionBridgePrompt?: string;
 	}): Promise<void> {
 		const needsReload =
 			partial.promptMode !== undefined ||
@@ -2949,6 +2974,12 @@ export class ClientSession {
 		}
 		if (partial.visionBridgeModel !== undefined) {
 			this.settings.visionBridgeModel = partial.visionBridgeModel ?? null;
+		}
+		if (partial.visionBridgePromptMode !== undefined) {
+			this.settings.visionBridgePromptMode = partial.visionBridgePromptMode;
+		}
+		if (partial.visionBridgePrompt !== undefined) {
+			this.settings.visionBridgePrompt = partial.visionBridgePrompt;
 		}
 		this.stateStore.saveSettings(this.clientId, this.settings);
 		this.pushSettings();
@@ -2991,6 +3022,8 @@ export class ClientSession {
 			// Presets don't capture vision-bridge prefs — keep the current ones.
 			visionBridgeEnabled: this.settings.visionBridgeEnabled,
 			visionBridgeModel: this.settings.visionBridgeModel,
+			visionBridgePromptMode: this.settings.visionBridgePromptMode,
+			visionBridgePrompt: this.settings.visionBridgePrompt,
 		};
 		this.stateStore.saveSettings(this.clientId, this.settings);
 		this.pushSettings();
@@ -3326,9 +3359,18 @@ export class ClientSession {
 				} else {
 					// Batch hash so re-sending identical images (edit & re-ask) reuses
 					// the transcript instead of re-burning tokens on the vision API.
-					const batchHash = bridgedImages
-						.map((b) => `${b.att.name ?? "img"}:${b.raw.slice(0, 48)}`)
-						.join("|");
+					// The active transcription prompt is part of the key: changing
+					// the custom prompt must invalidate cached transcripts made with
+					// the old prompt.
+					const batchHash =
+						bridgedImages
+							.map((b) => `${b.att.name ?? "img"}:${b.raw.slice(0, 48)}`)
+							.join("|") +
+						"::" +
+						buildVisionBridgePrompt(
+							this.settings.visionBridgePromptMode,
+							this.settings.visionBridgePrompt,
+						);
 					let transcript = this.visionBridgeCache.get(batchHash);
 					if (transcript === undefined) {
 						this.emit({
@@ -3348,7 +3390,13 @@ export class ClientSession {
 									mimeType: b.mimeType,
 									name: b.att.name,
 								})),
-								{ model: chosenModel ?? undefined },
+								{
+									model: chosenModel ?? undefined,
+									systemPrompt: buildVisionBridgePrompt(
+										this.settings.visionBridgePromptMode,
+										this.settings.visionBridgePrompt,
+									),
+								},
 							);
 							this.visionBridgeCache.set(batchHash, transcript);
 							this.emit({

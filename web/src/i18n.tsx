@@ -438,6 +438,13 @@ const zh = {
 	visionBridgeOffHint:
 		"已关闭：图片将原样发送，纯文本模型可能看不到图片内容",
 	visionBridgeCurrent: "当前转写模型：{model}",
+	visionBridgePromptMode: "转写提示词",
+	visionBridgePromptPlaceholder:
+		"输入自定义转写提示词…（留空 = 使用内置默认提示词，失焦后自动应用）",
+	visionBridgePromptAppendHint:
+		"追加模式：自定义内容拼接到内置转写提示词末尾（推荐，保留默认的逐字转写约束）。",
+	visionBridgePromptReplaceHint:
+		"替换模式：完全用自定义内容替换内置转写提示词（留空则仍使用内置默认提示词）。",
 	settingsExtensions: "插件",
 	settingsPresets: "预设",
 	settingsEnabled: "已启用",
@@ -890,6 +897,13 @@ const en: Record<keyof typeof zh, string> = {
 	visionBridgeOffHint:
 		"Disabled: images are sent as-is, a text-only model may not see them",
 	visionBridgeCurrent: "Current transcription model: {model}",
+	visionBridgePromptMode: "Transcription prompt",
+	visionBridgePromptPlaceholder:
+		"Type a custom transcription prompt… (empty = built-in default, applied on blur)",
+	visionBridgePromptAppendHint:
+		"Append mode: custom text is appended after the built-in transcription prompt (recommended — keeps the verbatim-transcription contract).",
+	visionBridgePromptReplaceHint:
+		"Replace mode: custom text replaces the built-in transcription prompt entirely (empty falls back to the built-in default).",
 	settingsExtensions: "Extensions",
 	settingsPresets: "Presets",
 	settingsEnabled: "Enabled",
