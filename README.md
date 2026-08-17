@@ -135,6 +135,15 @@ pi-web-ui server unquiesce                  # reopen admission
 PID, quiesce state, connected browsers, running conversations) — the same
 socket drives `quiesce`/`unquiesce`.
 
+- **macOS** → launchd agent (no sudo), logs to `/tmp/pi-web-ui.log` / `.err`
+- **Linux** → systemd unit (`systemctl enable --now`), logs via `journalctl -u pi-web-ui -f`
+- **Windows** → Task Scheduler logon task (hidden PowerShell window, no black console)
+
+Options: `--port` (default 8787), `--cwd` (workspace), `--data-dir` (sessions),
+`--name` (custom service name). Rerunning `server install` with new options
+regenerates the config and restarts the service — that's how you change its
+port/cwd.
+
 ## Security
 
 - **Loopback-only by default** — the server binds `127.0.0.1` and is not
@@ -152,14 +161,73 @@ socket drives `quiesce`/`unquiesce`.
   `Authorization` / API keys) are never sent to the browser; the model
   management UI edits everything else and the server preserves the headers.
 
-- **macOS** → launchd agent (no sudo), logs to `/tmp/pi-web-ui.log` / `.err`
-- **Linux** → systemd unit (`systemctl enable --now`), logs via `journalctl -u pi-web-ui -f`
-- **Windows** → Task Scheduler logon task (hidden PowerShell window, no black console)
+## Reverse proxy (nginx)
 
-Options: `--port` (default 8787), `--cwd` (workspace), `--data-dir` (sessions),
-`--name` (custom service name). Rerunning `server install` with new options
-regenerates the config and restarts the service — that's how you change its
-port/cwd.
+Serve pi-web-ui behind nginx on the same host (it binds loopback only, so a
+same-machine reverse proxy is the supported remote-access path — no
+`PI_WEB_HOST=0.0.0.0` needed):
+
+```nginx
+# pi-web-ui on 127.0.0.1:8787, exposed as https://your-host/pi/
+server {
+    listen 443 ssl;
+    server_name your-host;
+    # ssl_certificate ... / ssl_certificate_key ...
+
+    # App entry at a sub-path (strips the /pi/ prefix)
+    location /pi/ {
+        proxy_pass http://127.0.0.1:8787/;
+        proxy_http_version 1.1;
+        # $http_host keeps the port — the server's origin check compares the
+        # full authority (hostname AND port). $host would drop it and get 403.
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # WebSocket — MUST forward Host identically or the upgrade is 403'd
+    # (page loads, but chat/terminal keep reconnecting)
+    location /ws {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    # Absolute-path assets/API the built frontend requests (root, not /pi/)
+    location /assets/  { proxy_pass http://127.0.0.1:8787; }
+    location = /favicon.svg           { proxy_pass http://127.0.0.1:8787; }
+    location = /favicon-streaming.svg { proxy_pass http://127.0.0.1:8787; }
+    location = /api/file   { proxy_pass http://127.0.0.1:8787; }
+    location = /api/health { proxy_pass http://127.0.0.1:8787; }
+}
+```
+
+Key points:
+
+- **`Host` must be `$http_host`** (keeps the port) on both `/pi/` and `/ws` —
+  the origin check compares hostname **and** port. `proxy_set_header Host $host`
+  or leaving it unset (defaults to the upstream `127.0.0.1:8787`) both fail with 403.
+- **Same-origin works automatically**: as long as the browser's `Origin` equals
+  the forwarded `Host` (it does through a plain proxy), no
+  `PI_WEB_ALLOW_ORIGINS` is needed. Only set it when the browser origin differs
+  from the Host the server sees (e.g. a TLS-terminating proxy that changes the
+  port).
+- **No `proxy_protocol` unless you really need real client IPs**: it makes
+  nginx reject every connection that does not send a PROXY header, which
+  breaks direct LAN access and any non-frp clients. With frp, drop
+  `transport.proxyProtocolVersion` from the proxy config unless nginx listens
+  with `proxy_protocol` too.
+- **LAN access without a proxy**: just set `PI_WEB_HOST=0.0.0.0` (and a
+  firewall rule) — or put the whole server block above on port 80/443.
+
+Full working example (with an frp tunnel): `deploy/nginx-subpath.conf`.
+
+## License
 
 ## License
 

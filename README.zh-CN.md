@@ -130,6 +130,14 @@ pi-web-ui server unquiesce                  # 解除排空，恢复接收新工�
 `server status` 还会经本地控制 socket 显示实时状态（版本、PID、排空状态、
 浏览器连接数、运行中对话数）——`quiesce`/`unquiesce` 也走同一个 socket。
 
+- **macOS** → launchd 代理（无需 sudo），日志 `/tmp/pi-web-ui.log` / `.err`
+- **Linux** → systemd unit（`systemctl enable --now`），日志 `journalctl -u pi-web-ui -f`
+- **Windows** → 计划任务（登录自启，隐藏 PowerShell 窗口，无黑窗）
+
+选项：`--port`（默认 8787）、`--cwd`（工作目录）、`--data-dir`（会话目录）、
+`--name`（自定义服务名）。重复执行 `server install` 并传入新选项即可重新生成配置
+并重启服务 —— 这就是修改已装服务端口/工作目录的方式。
+
 ## 安全
 
 - **默认只绑 loopback** —— 服务器只监听 `127.0.0.1`，不暴露到网络；需要局域网访问或
@@ -142,13 +150,68 @@ pi-web-ui server unquiesce                  # 解除排空，恢复接收新工�
 - **凭据不下发浏览器** —— provider 的 `headers`（可能含 Authorization / API key）
   永不发给浏览器；模型管理 UI 编辑其他字段，服务端自动保留 headers。
 
-- **macOS** → launchd 代理（无需 sudo），日志 `/tmp/pi-web-ui.log` / `.err`
-- **Linux** → systemd unit（`systemctl enable --now`），日志 `journalctl -u pi-web-ui -f`
-- **Windows** → 计划任务（登录自启，隐藏 PowerShell 窗口，无黑窗）
+## 反向代理（nginx）
 
-选项：`--port`（默认 8787）、`--cwd`（工作目录）、`--data-dir`（会话目录）、
-`--name`（自定义服务名）。重复执行 `server install` 并传入新选项即可重新生成配置
-并重启服务 —— 这就是修改已装服务端口/工作目录的方式。
+pi-web-ui 默认只绑 loopback，同机 nginx 反代是官方支持的远程访问方式（无需
+`PI_WEB_HOST=0.0.0.0`）：
+
+```nginx
+# pi-web-ui 在 127.0.0.1:8787，对外暴露为 https://your-host/pi/
+server {
+    listen 443 ssl;
+    server_name your-host;
+    # ssl_certificate ... / ssl_certificate_key ...
+
+    # 应用入口（剥掉 /pi/ 前缀）
+    location /pi/ {
+        proxy_pass http://127.0.0.1:8787/;
+        proxy_http_version 1.1;
+        # 必须用 $http_host（保留端口）—— 服务端的 Origin 校验比较完整权威
+        # （hostname + 端口），$host 会丢掉端口导致 403
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # WebSocket —— 必须原样转发 Host，否则升级被 403（页面能开，
+    # 但对话/终端一直重连）
+    location /ws {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    # 构建产物的绝对路径资源/API（根路径，不带 /pi/）
+    location /assets/  { proxy_pass http://127.0.0.1:8787; }
+    location = /favicon.svg           { proxy_pass http://127.0.0.1:8787; }
+    location = /favicon-streaming.svg { proxy_pass http://127.0.0.1:8787; }
+    location = /api/file   { proxy_pass http://127.0.0.1:8787; }
+    location = /api/health { proxy_pass http://127.0.0.1:8787; }
+}
+```
+
+要点：
+
+- **`Host` 必须用 `$http_host`**（保留端口），`/pi/` 和 `/ws` 都要 —— Origin 校验比较
+  hostname **和**端口。`proxy_set_header Host $host` 或不设置（默认上游地址
+  `127.0.0.1:8787`）都会 403。
+- **同源自动通过**：只要浏览器 Origin 与转发后的 Host 一致（普通反代天然如此），
+  就无需 `PI_WEB_ALLOW_ORIGINS`；仅当浏览器 Origin 与后端看到的 Host 不同
+  （如 TLS 终止代理改了端口）才需要设置。
+- **不要开 `proxy_protocol`**（除非确实要真实客户端 IP）：它会让 nginx 拒绝所有
+  不带 PROXY 头的连接，局域网直连和 frp 以外的客户端全挂。用 frp 时同样去掉
+  `transport.proxyProtocolVersion`（除非 nginx 也 listen proxy_protocol）。
+- **局域网免代理访问**：直接设 `PI_WEB_HOST=0.0.0.0`（加防火墙规则），
+  或把上面的 server 块放到 80/443 端口。
+
+带 frp 内网穿透的完整可运行示例：`deploy/nginx-subpath.conf`。
+
+## License
 
 ## License
 
