@@ -93,7 +93,10 @@ pi-web-ui/
 	│   │                           #     delete_preset）：顶栏 ⚙ 打开。① 系统提示词：append（追加到默认提示词
 	│   │                           #     末尾）或 replace（整体替换，项目上下文/技能段仍自动附加）——经
 	│   │                           #     resourceLoaderOptions 的 systemPromptOverride + appendSystemPromptOverride
-	│   │                           #     实现（官方钩子，每次 reload() 重放）；② 技能/插件开关：skillsOverride /
+	│   │                           #     实现（官方钩子，每次 reload() 重放）；**replace 模式输入框预填默认提示词**
+	│   │                           #     （settings_state.defaultSystemPrompt = system prompt 文件内容，无文件时回退当前
+	│   │                           #     会话实际生效的完整 systemPrompt）；未修改默认文本直接失焦保存为空 → 服务端回退默认
+	│   │                           #     （避免固化全文、切回 append 后重复追加）；② 技能/插件开关：skillsOverride /
 	│   │                           #     extensionsOverride 按名/按源（npm spec 或路径）过滤，session.reload() 后
 	│   │                           #     立即从系统提示词、/skill: 目录和扩展命令中消失；③ 预设：把当前设置
 	│   │                           #     （提示词+开关）存成命名组合，一键 apply/delete。设置存 client-state.json
@@ -229,6 +232,9 @@ pi-web-ui/
   `collectVisionModels()` = `findVisionModels` 结果）供下拉选择；预设（preset）**不包含**视觉桥
   偏好（`SettingsPreset extends Omit<ClientSettings, "visionBridge…">`，apply 时保留当前值）；
   `setSettings` 里视觉桥字段变更**不触发** `applyRuntimeSettings()`（无需 reload，下次 prompt 即生效）。
+  **两个 replace 输入框都会预填"原本的提示词"**（settings_state 带 `defaultSystemPrompt` +
+  `visionBridgeDefaultPrompt`）：切换替换模式时空输入框自动填入内置默认文本供直接修改，
+  内容与默认一致时保存为空（= 使用默认），切回 append 不会出现重复追加。
 
 **文件对话（无工作区路径）**：拖入输入框 / 📎 上传的任意文件带 `attachments[].fileData`
 （base64）发送——服务端写入全局目录 `~/.pi-web/uploads/<clientId>/`（**不放项目内**，

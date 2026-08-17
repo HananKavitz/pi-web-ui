@@ -65,10 +65,22 @@ export function SettingsModal({ chat, send, onClose }: SettingsModalProps) {
 	useEffect(() => {
 		if (!settings) return;
 		setPromptMode(settings.promptMode);
-		if (!promptFocus.current) setPromptDraft(settings.customSystemPrompt);
+		if (promptFocus.current) return;
+		// append: show the user's own text; replace: prefill the built-in
+		// default prompt so the user sees exactly what they would replace.
+		setPromptDraft(
+			promptMode === "append" || settings.customSystemPrompt
+				? settings.customSystemPrompt
+				: settings.defaultSystemPrompt || "",
+		);
 		setVbPromptMode(settings.visionBridgePromptMode);
-		if (!vbPromptFocus.current) setVbPromptDraft(settings.visionBridgePrompt);
-	}, [settings]);
+		if (vbPromptFocus.current) return;
+		setVbPromptDraft(
+			vbPromptMode === "append" || settings.visionBridgePrompt
+				? settings.visionBridgePrompt
+				: settings.visionBridgeDefaultPrompt || "",
+		);
+	}, [settings, promptMode, vbPromptMode]);
 
 	if (!settings) return null;
 
@@ -100,8 +112,18 @@ export function SettingsModal({ chat, send, onClose }: SettingsModalProps) {
 		setPartial({ disabledExtensions: [...next] });
 	};
 
-	const savePrompt = () =>
-		setPartial({ promptMode, customSystemPrompt: promptDraft });
+	const savePrompt = () => {
+		// In replace mode, a draft identical to the built-in default means the
+		// user didn't actually modify it — store empty so the server falls back
+		// to the default (and switching to append later never duplicates it).
+		const text =
+			promptMode === "replace" &&
+			settings.defaultSystemPrompt &&
+			promptDraft === settings.defaultSystemPrompt
+				? ""
+				: promptDraft;
+		setPartial({ promptMode, customSystemPrompt: text });
+	};
 
 	return (
 		<div className="modal-backdrop" onClick={onClose}>
@@ -276,9 +298,17 @@ export function SettingsModal({ chat, send, onClose }: SettingsModalProps) {
 							onFocus={() => (vbPromptFocus.current = true)}
 							onBlur={() => {
 								vbPromptFocus.current = false;
+								// Same contract as the system prompt: an unmodified copy of
+								// the built-in default is stored as empty (use default).
+								const text =
+									vbPromptMode === "replace" &&
+									settings.visionBridgeDefaultPrompt &&
+									vbPromptDraft === settings.visionBridgeDefaultPrompt
+										? ""
+										: vbPromptDraft;
 								setPartial({
 									visionBridgePromptMode: vbPromptMode,
-									visionBridgePrompt: vbPromptDraft,
+									visionBridgePrompt: text,
 								});
 							}}
 							onChange={(e) => setVbPromptDraft(e.target.value)}

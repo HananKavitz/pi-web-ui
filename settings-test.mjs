@@ -104,6 +104,12 @@ try {
 	check("has extensions array", Array.isArray(st0.settings.extensions));
 	check("has presets array", Array.isArray(st0.settings.presets));
 	check("default promptMode=append", st0.settings.promptMode === "append");
+	check(
+		"settings_state carries built-in default prompts",
+		typeof st0.settings.defaultSystemPrompt === "string" &&
+			typeof st0.settings.visionBridgeDefaultPrompt === "string" &&
+			st0.settings.visionBridgeDefaultPrompt.length > 0,
+	);
 	console.log(`  skills=${st0.settings.skills.length} extensions=${st0.settings.extensions.length}`);
 
 	c.send({ type: "get_settings" });

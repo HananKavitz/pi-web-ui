@@ -116,10 +116,13 @@ async function run() {
 	const swOn = await sw.evaluate((el) => el.classList.contains("on"));
 	check("toggle starts enabled", swOn);
 
-	// Model picker lists both vision models + auto option.
-	const select = page.locator(".set-section select").last();
-	await select.waitFor({ timeout: 5000 });
-	const opts = await select.locator("option").allTextContents();
+	// Model picker lists both vision models + auto option. (The vision-bridge
+	// section now has TWO selects — model + prompt mode — so scope to the
+	// first one inside the section.)
+	const vbSection = page.locator(".set-section", { hasText: "视觉桥" });
+	const modelSelect = vbSection.locator("select").first();
+	await modelSelect.waitFor({ timeout: 5000 });
+	const opts = await modelSelect.locator("option").allTextContents();
 	check(
 		"picker lists auto + 2 vision models",
 		opts.length === 3 && opts.some((o) => o.includes("自动")),
@@ -127,9 +130,7 @@ async function run() {
 	);
 
 	// Pick the second vision model → server echoes it back.
-	await select.selectOption("vision/glm-vl");
-	const vbSection = page.locator(".set-section", { hasText: "视觉桥" });
-	await vbSection.locator("select").waitFor({ timeout: 5000 });
+	await modelSelect.selectOption("vision/glm-vl");
 	await page.waitForFunction(
 		() => {
 			const sections = [...document.querySelectorAll(".set-section")];
@@ -148,6 +149,48 @@ async function run() {
 	const pickerInVb = await vbSection.locator("select").count();
 	const hint = await page.locator(".set-hint", { hasText: "已关闭" }).count();
 	check("disabling hides picker + shows off hint", pickerInVb === 0 && hint > 0);
+
+	// -- replace-mode prefills the built-in default prompts --------------------
+	// Vision bridge: switch its prompt mode to "replace" → the textarea must be
+	// prefilled with the built-in default transcription prompt (ready to edit).
+	await sw.click(); // re-enable the bridge
+	await sleep(800);
+	const vbModeSelect = vbSection.locator("select").nth(1);
+	await vbModeSelect.waitFor({ timeout: 5000 });
+	await vbModeSelect.selectOption("replace");
+	await page.waitForFunction(
+		() => {
+			const sections = [...document.querySelectorAll(".set-section")];
+			const vb = sections.find((el) => el.textContent.includes("视觉桥"));
+			const ta = vb?.querySelector(".set-prompt-input");
+			return (
+				ta instanceof HTMLTextAreaElement &&
+				ta.value.includes("You are a vision bridge")
+			);
+		},
+		{ timeout: 10000 },
+	);
+	check("replace mode prefills the built-in vision-bridge prompt", true);
+
+	// System prompt: switch to "replace" → the textarea must show the built-in
+	// default system prompt (the SDK's default, since the test agent dir has no
+	// system-prompt file).
+	const sysSection = page.locator(".set-section", { hasText: "系统提示词" });
+	const sysModeSelect = sysSection.locator("select").first();
+	await sysModeSelect.selectOption("replace");
+	await page.waitForFunction(
+		() => {
+			const sections = [...document.querySelectorAll(".set-section")];
+			const sys = sections.find((el) => el.textContent.includes("系统提示词"));
+			const ta = sys?.querySelector(".set-prompt-input");
+			return (
+				ta instanceof HTMLTextAreaElement &&
+				ta.value.includes("You are an expert coding assistant")
+			);
+		},
+		{ timeout: 10000 },
+	);
+	check("replace mode prefills the built-in system prompt", true);
 
 	await browser.close();
 }

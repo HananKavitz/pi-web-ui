@@ -72,6 +72,7 @@ import {
 import {
 	buildVisionBridgePrompt,
 	findVisionModels,
+	SYSTEM_PROMPT,
 	transcribeImages,
 } from "./vision-bridge.js";
 
@@ -1415,6 +1416,29 @@ export class ClientSession {
 	 */
 	private visionBridgeCache = new Map<string, string>();
 
+	/** Most recent built-in (default) system prompt observed by the
+	 *  resource-loader override — surfaced via settings_state so the
+	 *  replace-mode editor can show the prompt it would otherwise replace.
+	 *  Only non-empty when the user has a system-prompt file. */
+	private lastBaseSystemPrompt = "";
+
+	/** The system prompt the replace-mode editor should show as its seed:
+	 *  the user's system-prompt file content if one exists, otherwise the
+	 *  SDK's built-in default actually in effect (agent.state.systemPrompt,
+	 *  which the loader rebuilds at session init). If the user HAS a custom
+	 *  prompt the seed is only cosmetic — an unmodified seed is saved as
+	 *  empty and the server falls back to the true base. */
+	private effectiveDefaultSystemPrompt(): string {
+		if (this.lastBaseSystemPrompt) return this.lastBaseSystemPrompt;
+		try {
+			const sp = this.session.agent.state.systemPrompt;
+			if (typeof sp === "string" && sp) return sp;
+		} catch {
+			// Session not ready yet.
+		}
+		return "";
+	}
+
 	/** Web-facing extension UI context (widgets, notifications). */
 	private webUi = new WebUIContext((msg) => this.emit(msg));
 	private widgetsTimer: ReturnType<typeof setInterval> | null = null;
@@ -1519,11 +1543,17 @@ export class ClientSession {
 				// 新对话（新 runtime）也会自动带上当前设置。
 				resourceLoaderOptions: {
 					// 系统提示词：replace 模式整体替换；append 模式追加到提示词末尾。
-					systemPromptOverride: (base?: string) =>
-						this.settings.promptMode === "replace" &&
-						this.settings.customSystemPrompt.trim()
+					systemPromptOverride: (base?: string) => {
+						// Remember the built-in default so the settings panel can show
+						// it when the user edits in replace mode.
+						if (typeof base === "string" && base) {
+							this.lastBaseSystemPrompt = base;
+						}
+						return this.settings.promptMode === "replace" &&
+							this.settings.customSystemPrompt.trim()
 							? this.settings.customSystemPrompt
-							: base,
+							: base;
+					},
 					appendSystemPromptOverride: (base: string[]) => {
 						const out = [...base];
 						const custom = this.settings.customSystemPrompt.trim();
@@ -2919,6 +2949,11 @@ export class ClientSession {
 				visionBridgeModel: this.settings.visionBridgeModel,
 				visionBridgePromptMode: this.settings.visionBridgePromptMode,
 				visionBridgePrompt: this.settings.visionBridgePrompt,
+				// The built-in prompts, so the replace-mode editors can prefill the
+				// text they would otherwise replace (empty until the resource-loader
+				// has run once for the system prompt).
+				defaultSystemPrompt: this.effectiveDefaultSystemPrompt(),
+				visionBridgeDefaultPrompt: SYSTEM_PROMPT,
 				visionModels: this.collectVisionModels(),
 				disabledSkills: [...this.settings.disabledSkills],
 				disabledExtensions: [...this.settings.disabledExtensions],

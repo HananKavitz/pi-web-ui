@@ -515,6 +515,12 @@ export interface UiSettingsState {
 	visionBridgePromptMode: "append" | "replace";
 	/** Custom vision-bridge transcription prompt text. */
 	visionBridgePrompt: string;
+	/** The built-in default system prompt (what replace mode would otherwise
+	 *  replace) — prefill source for the replace-mode editor. Empty until the
+	 *  resource-loader has run at least once. */
+	defaultSystemPrompt: string;
+	/** The built-in default vision-bridge transcription prompt. */
+	visionBridgeDefaultPrompt: string;
 	/** Vision-capable configured models available on this machine. */
 	visionModels: UiVisionBridgeModel[];
 	skills: UiSkillInfo[];

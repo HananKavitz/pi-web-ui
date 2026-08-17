@@ -416,6 +416,15 @@ try {
 			ss.settings.visionBridgeModel === null &&
 			ss.settings.visionModels.length === 2,
 	);
+	check(
+		"settings_state carries the built-in default prompts",
+		typeof ss.settings.visionBridgeDefaultPrompt === "string" &&
+			ss.settings.visionBridgeDefaultPrompt.includes(
+				"You are a vision bridge",
+			) &&
+			typeof ss.settings.defaultSystemPrompt === "string" &&
+			ss.settings.defaultSystemPrompt.length > 0,
+	);
 
 	// Switch the preferred transcription model to the SECOND vision model.
 	c.send({

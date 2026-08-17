@@ -424,7 +424,7 @@ const zh = {
 	promptModeAppend: "追加",
 	promptModeReplace: "替换",
 	promptAppendHint: "追加模式：自定义内容拼接到默认系统提示词末尾（推荐，保留默认行为约束）。",
-	promptReplaceHint: "替换模式：完全用自定义内容替换系统提示词（项目上下文与技能段仍会自动附加）。",
+	promptReplaceHint: "替换模式：完全用自定义内容替换系统提示词（项目上下文与技能段仍会自动附加）。切换后输入框会显示原本的默认提示词，可直接修改；不改动失焦则仍使用默认。",
 	promptPlaceholder: "输入自定义系统提示词…（失焦后自动应用）",
 	settingsSkills: "技能",
 	settingsVisionBridge: "视觉桥",
@@ -444,7 +444,7 @@ const zh = {
 	visionBridgePromptAppendHint:
 		"追加模式：自定义内容拼接到内置转写提示词末尾（推荐，保留默认的逐字转写约束）。",
 	visionBridgePromptReplaceHint:
-		"替换模式：完全用自定义内容替换内置转写提示词（留空则仍使用内置默认提示词）。",
+		"替换模式：完全用自定义内容替换内置转写提示词。切换后输入框会显示内置默认提示词，可直接修改；不改动失焦则仍使用默认。",
 	settingsExtensions: "插件",
 	settingsPresets: "预设",
 	settingsEnabled: "已启用",
@@ -883,7 +883,7 @@ const en: Record<keyof typeof zh, string> = {
 	promptModeAppend: "Append",
 	promptModeReplace: "Replace",
 	promptAppendHint: "Append mode: your text is appended to the end of the default system prompt (recommended — keeps the default behavior constraints).",
-	promptReplaceHint: "Replace mode: your text fully replaces the system prompt (project context and skills are still appended automatically).",
+	promptReplaceHint: "Replace mode: your text fully replaces the system prompt (project context and skills are still appended automatically). After switching, the editor shows the built-in default prompt ready to edit; blurring without changes keeps the default.",
 	promptPlaceholder: "Type a custom system prompt… (applied on blur)",
 	settingsSkills: "Skills",
 	settingsVisionBridge: "Vision bridge",
@@ -903,7 +903,7 @@ const en: Record<keyof typeof zh, string> = {
 	visionBridgePromptAppendHint:
 		"Append mode: custom text is appended after the built-in transcription prompt (recommended — keeps the verbatim-transcription contract).",
 	visionBridgePromptReplaceHint:
-		"Replace mode: custom text replaces the built-in transcription prompt entirely (empty falls back to the built-in default).",
+		"Replace mode: custom text replaces the built-in transcription prompt entirely. After switching, the editor shows the built-in default prompt ready to edit; blurring without changes keeps the default.",
 	settingsExtensions: "Extensions",
 	settingsPresets: "Presets",
 	settingsEnabled: "Enabled",
