@@ -9,6 +9,65 @@ built-in terminal, manage models, tweak the system prompt, toggle skills and
 extensions on/off, and save/apply settings presets — all from a settings panel.
 Requires Node.js ≥ 22.19 and a configured pi install.
 
+## Features
+
+**Chat**
+
+- Streaming agent chat over WebSocket — the pi SDK runs in-process; events are pushed as snapshots (60 ms throttled) and the browser renders them.
+- Thinking blocks, tool-call cards and bash outputs with live status (running → finished · waiting for the model · duration).
+- **补充 (steer)** — send a follow-up while the agent is replying; it is queued and injected as soon as the current turn's tool calls settle (the "Interrupt" equivalent of the pi CLI).
+- **Slash commands** — `/` opens a command picker (built-in / extension / template / skill); built-ins include `/new /model /compact /cwd /thinking /resume`, plus `/help` (command list) and `/copy` (copy last reply).
+- **Multiple conversations per project** — each conversation gets its own agent runtime and keeps running in the background after you switch away; the "Running conversations" list shows stream progress and lets you switch back.
+- **Edit & re-ask** — fork any past question into a new branch and re-prompt; the original conversation stays untouched.
+- Long threads auto-collapse messages older than 30 into lazy summary rows (click to expand).
+- Question navigation — a floating rail plus per-question tags to jump between questions.
+
+**Files, images & attachments**
+
+- Three attachment modes: `inline` (≤12 KB), `reference` (path only), `lines` (selected ranges) — over-limit ones degrade automatically.
+- Paste / drag-drop / upload images — resized client-side and sent as image content when the model supports vision (warning otherwise).
+- **Vision bridge** — when the current model is text-only, images are transcribed into text evidence by an auto-discovered vision model (cached per batch; model & on/off configurable in Settings).
+- Attach arbitrary files without a workspace path — stored in a global uploads dir, inlined when small, referenced by absolute path otherwise.
+- File preview — line numbers, click/drag/Shift selection (add to chat as `lines`), GBK fallback decoding, binary hex view, media preview over HTTP with Range support, and a download button.
+- Live file tree — the server watches the listed directory (fs.watch) and re-lists on change; oversized directories show a truncation warning.
+
+**Terminal & Git**
+
+- Built-in terminal (xterm.js + node-pty) with per-client PTY management; Windows auto-selects Git Bash (busybox fallback).
+- **Source control (Git) panel** — status / branch / diff / untracked files via a hidden query terminal; commit, switch branch, push and pull run in the visible terminal and auto-switch to the terminal view.
+
+**Models & settings**
+
+- Model management — edit `models.json` in the UI and set per-provider API keys (keys/headers never leave the server).
+- Thinking level per model (only the levels the model actually supports are shown).
+- First-run setup wizard.
+- Settings panel — system prompt (append or replace), toggle skills/extensions on/off with immediate effect, save/apply/delete settings presets, and vision-bridge model & switch.
+
+**Goal mode**
+
+- Goal bar — set a target with a review model, max rounds and a lock switch.
+- Goal wizard ("AI 提炼") — turns a raw request into a concrete goal through a guided questionnaire.
+- Automatic review loop — after each turn an independent review session checks the goal against the final text and `git diff HEAD`; on fail the feedback is injected as steer until it passes (or the round cap is hit).
+
+**Background tasks**
+
+- Background-task panel — servers launched by the agent are detected via port snapshots and listed (port/pid/name); stop one or kill all.
+- Tool watchdog — a tool call running over 20 minutes is aborted automatically.
+- **Stop bash command only** — abort a running bash tool without killing the conversation.
+
+**Safety & operations**
+
+- Loopback-only by default; set `PI_WEB_HOST=0.0.0.0` for LAN / containers.
+- WebSocket Origin/Host same-authority check — cross-origin pages are rejected (403); `PI_WEB_ALLOW_ORIGINS` whitelist for reverse proxies.
+- Quiesce drain mode via a local control socket (`server status|quiesce|unquiesce`).
+- Credentials stay server-side — provider headers are never sent to the browser.
+- Sound alerts, Chinese/English UI, and a recent-projects list (click to switch workspace).
+
+**Deploy & update**
+
+- Foreground, global npm install, Docker (docker-compose), macOS launchd, Linux systemd, Windows Task Scheduler, and a desktop shortcut (`server shortcut`).
+- In-app self-update — checks the npm registry, installs and auto-restarts the service.
+
 ## Screenshots
 
 ![pi-web-ui main interface](https://cdn.jsdelivr.net/gh/xing-shuyin/pi-web-ui@main/assets/shot.jpeg)
@@ -105,3 +164,4 @@ port/cwd.
 ## License
 
 MIT
+

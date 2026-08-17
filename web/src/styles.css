@@ -895,6 +895,19 @@ body {
 	border-color: rgba(139, 92, 246, 0.4);
 }
 
+/* ---- attachcard mode: vision-bridge transcript -------------------------- */
+.attachcard-mode.bridged {
+	color: var(--accent);
+	border-color: rgba(139, 92, 246, 0.4);
+}
+.attachcard-bridgenote {
+	font-size: 11px;
+	color: var(--text-faint);
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--border);
+	background: rgba(139, 92, 246, 0.06);
+}
+
 .attachcard-refnote {
 	padding: 8px 12px;
 	border-top: 1px dashed rgba(251, 191, 36, 0.3);

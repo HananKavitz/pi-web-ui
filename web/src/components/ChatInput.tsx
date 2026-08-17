@@ -219,7 +219,7 @@ export function ChatInput({
 		ta.style.overflowY = capped ? "auto" : "hidden";
 	}, [text]);
 
-	const submit = () => {
+	const submit = (queue = false) => {
 		const trimmed = text.trim();
 		const hasRawAttach = attachments.some((a) => a.imageData || a.fileData);
 		if (!connected || (!trimmed && !hasRawAttach)) return;
@@ -244,11 +244,14 @@ export function ChatInput({
 		// steering message (delivered as soon as the current assistant turn
 		// settles, skipping remaining tool calls — the pi CLI Enter semantic)
 		// and the agent immediately responds to it — see AgentService.prompt()
-		// in agent-service.ts.
+		// in agent-service.ts. The 补充 (supplement) button passes queue=true,
+		// which the server delivers as followUp instead — the prompt is sent
+		// only after the WHOLE run finishes ("AI 生成结束才发送").
 		if (
 			send({
 				type: "prompt",
 				text: trimmed,
+				queue,
 				attachments: attachments.map((a) => {
 					if (a.imageData) {
 						return {
@@ -324,7 +327,7 @@ export function ChatInput({
 							type="button"
 							className="btn supplement"
 							title={t("supplementTip")}
-							onClick={submit}
+							onClick={() => submit(true)}
 						>
 							<FiSend /> {t("supplement")}
 						</button>
@@ -348,7 +351,7 @@ export function ChatInput({
 						(!text.trim() &&
 							!attachments.some((a) => a.imageData || a.fileData))
 					}
-					onClick={submit}
+					onClick={() => submit()}
 				>
 					<FiArrowUp />
 				</button>

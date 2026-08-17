@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FiCpu, FiPackage, FiPlus, FiSettings, FiTrash2, FiX, FiZap } from "react-icons/fi";
+import { FiCpu, FiEye, FiPackage, FiPlus, FiSettings, FiTrash2, FiX, FiZap } from "react-icons/fi";
 import type {
 	ClientMessage,
 	UiExtensionInfo,
@@ -74,6 +74,8 @@ export function SettingsModal({ chat, send, onClose }: SettingsModalProps) {
 		customSystemPrompt?: string;
 		disabledSkills?: string[];
 		disabledExtensions?: string[];
+		visionBridgeEnabled?: boolean;
+		visionBridgeModel?: string | null;
 	}) => send({ type: "set_settings", ...patch });
 
 	const toggleSkill = (s: UiSkillInfo) => {
@@ -197,6 +199,60 @@ export function SettingsModal({ chat, send, onClose }: SettingsModalProps) {
 				</div>
 
 				{/* ---- presets --------------------------------------------------- */}
+				{/* ---- vision bridge ---------------------------------------------- */}
+				<div className="set-section">
+					<div className="set-section-title">
+						<FiEye className="set-section-icon" />
+						{t("settingsVisionBridge")}
+					</div>
+					<ToggleRow
+						title={t("visionBridgeEnabled")}
+						subtitle={t("settingsVisionBridgeDesc")}
+						enabled={settings.visionBridgeEnabled}
+						onToggle={() =>
+							setPartial({ visionBridgeEnabled: !settings.visionBridgeEnabled })
+						}
+					/>
+					{!settings.visionBridgeEnabled && (
+						<p className="set-hint">{t("visionBridgeOffHint")}</p>
+					)}
+					{settings.visionBridgeEnabled && (
+						<div className="set-mode-row">
+							<label className="set-field-label">
+								{t("visionBridgeModel")}
+							</label>
+							<select
+								className="set-select"
+								value={settings.visionBridgeModel ?? ""}
+								onChange={(e) =>
+									setPartial({ visionBridgeModel: e.target.value || null })
+								}
+							>
+								<option value="">{t("visionBridgeAuto")}</option>
+								{settings.visionModels.map((m) => (
+									<option
+										key={`${m.provider}/${m.id}`}
+										value={`${m.provider}/${m.id}`}
+									>
+										{m.label}
+									</option>
+								))}
+							</select>
+						</div>
+					)}
+					{settings.visionBridgeEnabled &&
+						(settings.visionModels.length === 0 ? (
+							<p className="set-hint">{t("visionBridgeNoModels")}</p>
+						) : (
+							<p className="set-hint">
+								{t("visionBridgeCurrent", {
+									model:
+										settings.visionBridgeModel ??
+										t("visionBridgeAuto"),
+								})}
+							</p>
+						))}
+				</div>
 				<div className="set-section">
 					<div className="set-section-title">
 						<FiSettings className="set-section-icon" />

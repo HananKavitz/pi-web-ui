@@ -83,7 +83,7 @@ const zh = {
 	attachHint: "将随下一条消息发送",
 	uploadFile: "添加文件（图片/文本/任意文件，也可直接拖入或粘贴截图）",
 	dropHereToAttach: "松开以添加文件",
-	imageNotSupported: "当前模型不支持识图，图片可能不会被模型看到",
+	imageNotSupported: "当前模型不支持识图：图片将交给视觉桥转写（若未配置视觉模型则可能被忽略）",
 	imageLoadFailed: "图片读取失败：{name}",
 	fileLoadFailed: "文件读取失败：{name}",
 	fileTooLarge: "文件过大已跳过（>{size}MB）：{name}",
@@ -112,7 +112,7 @@ const zh = {
 	stopBash: "停止",
 	stopBashTip: "停止正在运行的 bash 命令（对话继续）",
 	supplement: "补充",
-	supplementTip: "当前回复完成后立即发送",
+	supplementTip: "等当前回复全部生成完后再发送（不打断）",
 	sendTip: "发送（Enter）",
 
 	/* slash commands */
@@ -253,6 +253,8 @@ const zh = {
 	inlineLines: "内联 · {n} 行",
 	inlineLinesRange: "行 {start}-{end}",
 	image: "🖼 图片",
+	bridgedVision: "👁 已转写",
+	bridgedVisionDetail: "图片已由视觉桥转写（当前模型不支持识图）",
 	folderNotExpanded: "文件夹，未展开内容 —— 智能体会按需浏览目录",
 	fileNotExpanded: "文件较大（{size}），未展开内容 —— 智能体会按需读取",
 	"role.user": "你",
@@ -425,6 +427,17 @@ const zh = {
 	promptReplaceHint: "替换模式：完全用自定义内容替换系统提示词（项目上下文与技能段仍会自动附加）。",
 	promptPlaceholder: "输入自定义系统提示词…（失焦后自动应用）",
 	settingsSkills: "技能",
+	settingsVisionBridge: "视觉桥",
+	settingsVisionBridgeDesc:
+		"当前模型不支持识图时，把图片交给已配置的视觉模型转写为文字证据，再让模型回答",
+	visionBridgeEnabled: "启用视觉桥",
+	visionBridgeModel: "转写模型",
+	visionBridgeAuto: "自动选择（按顺序）",
+	visionBridgeNoModels:
+		"未找到已配置的视觉模型：在模型配置里添加任意支持图片的模型（如 qwen-vl、GLM-4V、Gemini）即可自动启用",
+	visionBridgeOffHint:
+		"已关闭：图片将原样发送，纯文本模型可能看不到图片内容",
+	visionBridgeCurrent: "当前转写模型：{model}",
 	settingsExtensions: "插件",
 	settingsPresets: "预设",
 	settingsEnabled: "已启用",
@@ -514,7 +527,7 @@ const en: Record<keyof typeof zh, string> = {
 	attachHint: "Will be sent with the next message",
 	uploadFile: "Add files (images / text / any file — or drag in / paste a screenshot)",
 	dropHereToAttach: "Release to attach file",
-	imageNotSupported: "The current model doesn't support vision — the image may be ignored",
+	imageNotSupported: "The current model doesn't support vision — images will be transcribed by the vision bridge (may be ignored if no vision model is configured)",
 	imageLoadFailed: "Couldn't read image: {name}",
 	fileLoadFailed: "Couldn't read file: {name}",
 	fileTooLarge: "File too large, skipped (> {size}MB): {name}",
@@ -543,7 +556,7 @@ const en: Record<keyof typeof zh, string> = {
 	stopBash: "Stop",
 	stopBashTip: "Stop the running bash command (conversation continues)",
 	supplement: "Follow-up",
-	supplementTip: "Send immediately after the current reply finishes",
+	supplementTip: "Send after the current reply has fully finished (no interruption)",
 	sendTip: "Send (Enter)",
 
 	/* slash commands */
@@ -685,6 +698,8 @@ const en: Record<keyof typeof zh, string> = {
 	inlineLines: "Inline · {n} lines",
 	inlineLinesRange: "Lines {start}-{end}",
 	image: "🖼 Image",
+	bridgedVision: "👁 Transcribed",
+	bridgedVisionDetail: "Image transcribed by the vision bridge (current model can't see images)",
 	folderNotExpanded:
 		"Folder — content not expanded, the agent will browse it as needed",
 	fileNotExpanded:
@@ -864,6 +879,17 @@ const en: Record<keyof typeof zh, string> = {
 	promptReplaceHint: "Replace mode: your text fully replaces the system prompt (project context and skills are still appended automatically).",
 	promptPlaceholder: "Type a custom system prompt… (applied on blur)",
 	settingsSkills: "Skills",
+	settingsVisionBridge: "Vision bridge",
+	settingsVisionBridgeDesc:
+		"When the current model can't see images, send them to a configured vision model and transcribe into text evidence first",
+	visionBridgeEnabled: "Enable vision bridge",
+	visionBridgeModel: "Transcription model",
+	visionBridgeAuto: "Auto (in order)",
+	visionBridgeNoModels:
+		"No configured vision model found: add any image-capable model (e.g. qwen-vl, GLM-4V, Gemini) in Model config to enable automatically",
+	visionBridgeOffHint:
+		"Disabled: images are sent as-is, a text-only model may not see them",
+	visionBridgeCurrent: "Current transcription model: {model}",
 	settingsExtensions: "Extensions",
 	settingsPresets: "Presets",
 	settingsEnabled: "Enabled",

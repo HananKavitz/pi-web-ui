@@ -55,6 +55,7 @@ import type {
 		UiMessage,
 		UiProviderConfig,
 		UiSettingsState,
+		UiVisionBridgeModel,
 		UiSkillInfo,
 		UiState,
 } from "./protocol.js";
@@ -68,6 +69,10 @@ import {
 	saveCommandsFile,
 	TerminalManager,
 } from "./terminals.js";
+import {
+	findVisionModels,
+	transcribeImages,
+} from "./vision-bridge.js";
 
 const SNAPSHOT_INTERVAL_MS = 60;
 const WIDGET_REFRESH_MS = 2000;
@@ -287,6 +292,45 @@ function decodeText(buf: Buffer): string {
 			return buf.toString("latin1");
 		}
 	}
+}
+
+/** Sniff an image MIME type from magic bytes (extension is only a hint).
+ *  Returns null when the bytes don't look like a known raster format —
+ *  callers keep such files as plain path references. */
+function sniffImageMime(buf: Buffer, ext: string): string | null {
+	if (
+		buf.length >= 8 &&
+		buf[0] === 0x89 &&
+		buf[1] === 0x50 &&
+		buf[2] === 0x4e &&
+		buf[3] === 0x47
+	) {
+		return "image/png";
+	}
+	if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+		return "image/jpeg";
+	}
+	const head = buf.slice(0, 6).toString("ascii");
+	if (head === "GIF87a" || head === "GIF89a") return "image/gif";
+	if (
+		buf.length >= 12 &&
+		buf.slice(0, 4).toString("ascii") === "RIFF" &&
+		buf.slice(8, 12).toString("ascii") === "WEBP"
+	) {
+		return "image/webp";
+	}
+	if (buf.length >= 2 && buf[0] === 0x42 && buf[1] === 0x4d) return "image/bmp";
+	// Unknown but raster-looking extension — trust the extension so existing
+	// image attachments keep working.
+	const known: Record<string, string> = {
+		".png": "image/png",
+		".jpg": "image/jpeg",
+		".jpeg": "image/jpeg",
+		".gif": "image/gif",
+		".webp": "image/webp",
+		".bmp": "image/bmp",
+	};
+	return known[ext] ?? null;
 }
 
 /** Windows persona appendix — appended to the SDK system prompt on win32 only.
@@ -956,10 +1000,18 @@ interface ClientSettings {
 	customSystemPrompt: string;
 	disabledSkills: string[];
 	disabledExtensions: string[];
+	/** Vision bridge on/off (default on). Off → images are sent as-is. */
+	visionBridgeEnabled: boolean;
+	/** Preferred vision model as "provider/id", or null = auto-detect first. */
+	visionBridgeModel: string | null;
 }
 
 /** A named combo of prompt + skill/extension toggles the user can re-apply. */
-interface SettingsPreset extends ClientSettings {
+/** A named combo of prompt + skill/extension toggles the user can re-apply.
+ *  Vision-bridge prefs are intentionally NOT part of a preset — they stay
+ *  whatever the user currently has set when a preset is applied. */
+interface SettingsPreset
+	extends Omit<ClientSettings, "visionBridgeEnabled" | "visionBridgeModel"> {
 	name: string;
 }
 
@@ -1077,6 +1129,8 @@ class ClientStateStore {
 			customSystemPrompt: s?.settings?.customSystemPrompt ?? "",
 			disabledSkills: s?.settings?.disabledSkills ?? [],
 			disabledExtensions: s?.settings?.disabledExtensions ?? [],
+			visionBridgeEnabled: s?.settings?.visionBridgeEnabled ?? true,
+			visionBridgeModel: s?.settings?.visionBridgeModel ?? null,
 		};
 	}
 
@@ -1090,6 +1144,9 @@ class ClientStateStore {
 			customSystemPrompt: settings.customSystemPrompt ?? cur.customSystemPrompt ?? "",
 			disabledSkills: settings.disabledSkills ?? cur.disabledSkills ?? [],
 			disabledExtensions: settings.disabledExtensions ?? cur.disabledExtensions ?? [],
+			visionBridgeEnabled:
+				settings.visionBridgeEnabled ?? cur.visionBridgeEnabled ?? true,
+			visionBridgeModel: settings.visionBridgeModel ?? cur.visionBridgeModel ?? null,
 		};
 		this.save();
 	}
@@ -1329,6 +1386,13 @@ export class ClientSession {
 
 	/** PTY terminals for this client (killed when the last socket detaches). */
 	readonly terminals = new TerminalManager((msg) => this.emit(msg));
+
+	/**
+	 * Vision-bridge transcript cache (batch hash → text). A re-sent / re-asked
+	 * prompt with the same images skips the vision API call entirely — editing
+	 * a question doesn't re-burn tokens on re-transcribing identical screenshots.
+	 */
+	private visionBridgeCache = new Map<string, string>();
 
 	/** Web-facing extension UI context (widgets, notifications). */
 	private webUi = new WebUIContext((msg) => this.emit(msg));
@@ -2830,6 +2894,9 @@ export class ClientSession {
 			settings: {
 				promptMode: this.settings.promptMode,
 				customSystemPrompt: this.settings.customSystemPrompt,
+				visionBridgeEnabled: this.settings.visionBridgeEnabled,
+				visionBridgeModel: this.settings.visionBridgeModel,
+				visionModels: this.collectVisionModels(),
 				disabledSkills: [...this.settings.disabledSkills],
 				disabledExtensions: [...this.settings.disabledExtensions],
 				skills,
@@ -2839,13 +2906,34 @@ export class ClientSession {
 		});
 	}
 
+	/** Vision-capable configured models, for the settings-panel picker. */
+	private collectVisionModels(): UiVisionBridgeModel[] {
+		try {
+			return findVisionModels(this.session.modelRuntime).map((m) => ({
+				provider: m.provider,
+				id: m.id,
+				label: m.label,
+			}));
+		} catch {
+			// Session not ready yet — the picker stays empty until next push.
+			return [];
+		}
+	}
+
 	/** Persist + apply a partial settings update (prompt text/mode, toggles). */
 	async setSettings(partial: {
 		promptMode?: PromptMode;
 		customSystemPrompt?: string;
 		disabledSkills?: string[];
 		disabledExtensions?: string[];
+		visionBridgeEnabled?: boolean;
+		visionBridgeModel?: string | null;
 	}): Promise<void> {
+		const needsReload =
+			partial.promptMode !== undefined ||
+			partial.customSystemPrompt !== undefined ||
+			partial.disabledSkills !== undefined ||
+			partial.disabledExtensions !== undefined;
 		if (partial.promptMode !== undefined) this.settings.promptMode = partial.promptMode;
 		if (partial.customSystemPrompt !== undefined) {
 			this.settings.customSystemPrompt = partial.customSystemPrompt;
@@ -2856,9 +2944,15 @@ export class ClientSession {
 		if (partial.disabledExtensions !== undefined) {
 			this.settings.disabledExtensions = partial.disabledExtensions;
 		}
+		if (partial.visionBridgeEnabled !== undefined) {
+			this.settings.visionBridgeEnabled = partial.visionBridgeEnabled;
+		}
+		if (partial.visionBridgeModel !== undefined) {
+			this.settings.visionBridgeModel = partial.visionBridgeModel ?? null;
+		}
 		this.stateStore.saveSettings(this.clientId, this.settings);
 		this.pushSettings();
-		await this.applyRuntimeSettings();
+		if (needsReload) await this.applyRuntimeSettings();
 	}
 
 	/** Save the CURRENT settings as a named preset (overwrites if exists). */
@@ -2894,6 +2988,9 @@ export class ClientSession {
 			customSystemPrompt: p.customSystemPrompt,
 			disabledSkills: [...p.disabledSkills],
 			disabledExtensions: [...p.disabledExtensions],
+			// Presets don't capture vision-bridge prefs — keep the current ones.
+			visionBridgeEnabled: this.settings.visionBridgeEnabled,
+			visionBridgeModel: this.settings.visionBridgeModel,
 		};
 		this.stateStore.saveSettings(this.clientId, this.settings);
 		this.pushSettings();
@@ -2998,6 +3095,13 @@ export class ClientSession {
 			name?: string;
 			size?: number;
 		}[],
+		/**
+		 * true = followUp: while streaming, queue the prompt and deliver it only
+		 * after the WHOLE run finishes (补充 button — "AI 生成结束才发送").
+		 * false/undefined = steer: the pi CLI Enter semantic — injected right
+		 * after the current turn settles, skipping remaining planned tool calls.
+		 */
+		queue = false,
 	): Promise<void> {
 		try {
 			const s = this.session;
@@ -3020,13 +3124,19 @@ export class ClientSession {
 				await s.sendCustomMessage(aside.message, { deliverAs: "nextTurn" });
 			}
 			if (s.isStreaming) {
-				// Steer: interrupts the current run — the message is delivered right
-				// after the current assistant turn settles (remaining planned tool
-				// calls are skipped) and the agent immediately responds to it. This
-				// is the pi CLI Enter-during-streaming semantic (docs/usage: Enter
-				// queues a steering message); followUp would wait for the whole run
+				// queue=true (补充 button) → followUp: the message is delivered only
+				// after the whole run finishes — the agent finishes what it started,
+				// then responds to the queued message. queue=false/undefined
+				// (plain Enter) → steer: interrupts the current run — the message
+				// is delivered right after the current assistant turn settles
+				// (remaining planned tool calls are skipped) and the agent
+				// immediately responds to it. This is the pi CLI
+				// Enter-during-streaming semantic (docs/usage: Enter queues a
+				// steering message); followUp would wait for the whole run
 				// to finish, which users perceive as ordinary queueing.
-				await s.prompt(text, { streamingBehavior: "steer" });
+				await s.prompt(text, {
+					streamingBehavior: queue ? "followUp" : "steer",
+				});
 			} else {
 				await s.prompt(text);
 			}
@@ -3113,10 +3223,157 @@ export class ClientSession {
 
 		const out: { message: Parameters<AgentSession["sendCustomMessage"]>[0] }[] =
 			[];
+
+		// -- Vision bridge ------------------------------------------------------
+		// When the active model can't accept images (DeepSeek, GLM, …), pasted
+		// images are transcribed by a configured vision model first and the
+		// transcript is fed to the text-only model as text evidence (see
+		// vision-bridge.ts — any model in models.json whose input includes
+		// "image" works, zero extra config). Vision-capable main models keep
+		// the raw image-content path untouched.
+		const mainModel = this.session.model;
+		const mainSupportsVision = mainModel?.input?.includes("image") ?? false;
+		const bridgedImages: {
+			idx: number;
+			att: (typeof attachments)[number];
+			raw: string;
+			mimeType: string;
+			bytes: number;
+		}[] = [];
+		/** Raw image bytes for path-referenced image files (idx → info), pre-read
+		 *  so the loop below doesn't re-read them. SVG stays a plain text file —
+		 *  the model reads its source, far more useful than a rasterized blob. */
+		const pathImageData = new Map<
+			number,
+			{ raw: string; mimeType: string; bytes: number }
+		>();
+		/** Cap for path images (fully read + base64'd); larger ones fall back to
+		 *  a plain path reference (the model can still attempt to read them). */
+		const MAX_PATH_IMAGE_BYTES = 5 * 1024 * 1024;
+		for (const [idx, att] of attachments.entries()) {
+			if (att.imageData) {
+				const raw = att.imageData.replace(/^data:[^;]*;base64,/, "");
+				const mimeType = att.mimeType?.startsWith("image/")
+					? att.mimeType
+					: "image/png";
+				const bytes = Buffer.byteLength(raw, "base64");
+				// Only images that would actually be sent (non-empty, under the cap).
+				if (bytes > 0 && bytes <= 2 * 1024 * 1024) {
+					if (!mainSupportsVision) {
+						bridgedImages.push({ idx, att, raw, mimeType, bytes });
+					}
+				}
+				continue;
+			}
+			if (att.fileData || !att.path) continue;
+			const ext = extname(att.path).toLowerCase();
+			if (!IMAGE_EXT.has(ext) || ext === ".svg") continue;
+			const abs = resolve(root, att.path);
+			const rawRel = relative(root, abs);
+			if (rawRel.startsWith("..") || rawRel.includes(`${sep}..`)) continue;
+			let st: { size: number; isFile(): boolean } | undefined;
+			try {
+				st = await fs.stat(abs);
+			} catch {
+				continue;
+			}
+			if (!st.isFile() || st.size === 0 || st.size > MAX_PATH_IMAGE_BYTES) {
+				continue;
+			}
+			const buf = await fs.readFile(abs);
+			const mime = sniffImageMime(buf, ext);
+			if (!mime) continue;
+			const raw = buf.toString("base64");
+			pathImageData.set(idx, { raw, mimeType: mime, bytes: st.size });
+			if (!mainSupportsVision) {
+				bridgedImages.push({ idx, att, raw, mimeType: mime, bytes: st.size });
+			}
+		}
+		/** Transcript per attachment index (filled below, keyed by bridgedImages idx). */
+		const bridgeTranscripts = new Map<number, string>();
+		if (bridgedImages.length > 0) {
+			if (!this.settings.visionBridgeEnabled) {
+				this.emit({
+					type: "notice",
+					level: "warning",
+					text: `当前模型（${mainModel?.name ?? mainModel?.id ?? "未知"}）不支持识图，且视觉桥已在设置中关闭：图片将原样发送、可能被忽略。`,
+				});
+			} else {
+				const visionModels = findVisionModels(this.session.modelRuntime);
+				// Preferred model from settings ("provider/id") — validated to exist
+				// and actually accept images; falls back to the first auto-detected.
+				let chosen = visionModels[0] ?? null;
+				const pref = this.settings.visionBridgeModel;
+				if (pref) {
+					const spec = this.resolveReviewModel(pref);
+					if (spec) {
+						const pm = this.session.modelRuntime.getModel(spec.provider, spec.id);
+						if (pm?.input?.includes("image")) {
+							chosen = {
+								provider: spec.provider,
+								id: spec.id,
+								label: `${pm.name ?? pm.id} (${spec.provider})`,
+							};
+						}
+					}
+				}
+				if (!chosen) {
+					this.emit({
+						type: "notice",
+						level: "warning",
+						text: `当前模型（${mainModel?.name ?? mainModel?.id ?? "未知"}）不支持识图，且未找到可用的视觉模型：图片将原样发送、可能被忽略。在模型配置里添加任意支持图片的模型（如 qwen-vl、GLM-4V、Gemini）即可自动启用视觉桥转写。`,
+					});
+				} else {
+					// Batch hash so re-sending identical images (edit & re-ask) reuses
+					// the transcript instead of re-burning tokens on the vision API.
+					const batchHash = bridgedImages
+						.map((b) => `${b.att.name ?? "img"}:${b.raw.slice(0, 48)}`)
+						.join("|");
+					let transcript = this.visionBridgeCache.get(batchHash);
+					if (transcript === undefined) {
+						this.emit({
+							type: "notice",
+							level: "info",
+							text: `当前模型不支持识图，正在用视觉桥（${chosen.label}）转写 ${bridgedImages.length} 张图片…`,
+						});
+						try {
+							const chosenModel = this.session.modelRuntime.getModel(
+								chosen.provider,
+								chosen.id,
+							);
+							transcript = await transcribeImages(
+								this.session.modelRuntime,
+								bridgedImages.map((b) => ({
+									data: b.raw,
+									mimeType: b.mimeType,
+									name: b.att.name,
+								})),
+								{ model: chosenModel ?? undefined },
+							);
+							this.visionBridgeCache.set(batchHash, transcript);
+							this.emit({
+								type: "notice",
+								level: "info",
+								text: `✅ 图片已由视觉桥转写完成（${chosen.label}）`,
+							});
+						} catch (err) {
+							transcript = "";
+							this.emit({
+								type: "notice",
+								level: "error",
+								text: `图片转写失败（${chosen.label}）：${(err as Error).message}。图片将原样发送、可能被忽略。`,
+							});
+						}
+					}
+					for (const b of bridgedImages)
+						bridgeTranscripts.set(b.idx, transcript ?? "");
+				}
+			}
+		}
 		/** Cap for reading a file in "lines" mode (selected slice is inlined). */
 		const MAX_LINES_READ_BYTES = 2 * 1024 * 1024;
 
-		for (const att of attachments) {
+		for (const [idx, att] of attachments.entries()) {
 			// Raw pasted/dropped/uploaded image — no workspace path involved (the
 			// browser downscales client-side; this guard only prevents abuse).
 			if (att.imageData) {
@@ -3138,6 +3395,32 @@ export class ClientSession {
 						type: "notice",
 						level: "warning",
 						text: `图片过大已跳过（>2MB）：${att.name ?? "粘贴图片"}`,
+					});
+					continue;
+				}
+				const transcript = bridgeTranscripts.get(idx);
+				if (transcript) {
+					// Bridged: the text-only main model can't see images, so it gets the
+					// vision model's transcript as text evidence; the image block is
+					// kept so the card still shows the original thumbnail.
+					out.push({
+						message: {
+							customType: "file",
+							content: [
+								{
+									type: "text",
+									text: `\n<vision-bridge>\n${transcript}\n</vision-bridge>`,
+								},
+								{ type: "image", data: raw, mimeType },
+							],
+							display: true,
+							details: {
+								name: att.name ?? "image.png",
+								path: undefined,
+								mode: "bridged",
+								size: bytes,
+							},
+						},
 					});
 					continue;
 				}
@@ -3304,8 +3587,63 @@ export class ClientSession {
 			}
 
 			const ext = extname(att.path).toLowerCase();
-			if (IMAGE_EXT.has(ext)) {
-				// Images can't be referenced — they must be inlined, so keep a hard cap.
+			if (IMAGE_EXT.has(ext) && ext !== ".svg") {
+				const pathImg = pathImageData.get(idx);
+				const transcript = bridgeTranscripts.get(idx);
+				if (transcript) {
+					// Text-only main model: the vision bridge transcribed this image —
+					// the model gets the transcript as text evidence (+ thumbnail).
+					out.push({
+						message: {
+							customType: "file",
+							content: [
+								{
+									type: "text",
+									text: `
+<vision-bridge>
+${transcript}
+</vision-bridge>`,
+								},
+								...(pathImg
+									? ([{
+											type: "image",
+											data: pathImg.raw,
+											mimeType: pathImg.mimeType,
+										}]) as const
+									: []),
+							],
+							display: true,
+							details: {
+								name,
+								path: rel,
+								mode: "bridged",
+								size: stat.size,
+							},
+						},
+					});
+					continue;
+				}
+				if (pathImg) {
+					// Vision-capable main model (or bridge failed): send the raw image
+					// content straight from the pre-read bytes.
+					out.push({
+						message: {
+							customType: "file",
+							content: [
+								{
+									type: "image",
+									data: pathImg.raw,
+									mimeType: pathImg.mimeType,
+								},
+							],
+							display: true,
+							details: { name, path: rel, mode: "image", size: stat.size },
+						},
+					});
+					continue;
+				}
+				// Pre-read failed (unsupported sniff / too large): fall back to the
+				// legacy inline-cap behavior.
 				if (stat.size > MAX_ATTACHMENT_BYTES) {
 					this.emit({
 						type: "notice",

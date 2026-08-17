@@ -170,6 +170,14 @@ export type ClientMessage =
 	| {
 			type: "prompt";
 			text: string;
+			/**
+			 * While the agent is streaming: queue this prompt and deliver it after
+			 * the WHOLE run finishes (followUp) instead of steering (injecting it
+			 * right after the current turn settles, skipping remaining tool calls).
+			 * The 补充 (supplement) button sends queue=true; plain Enter keeps the
+			 * steer semantic.
+			 */
+			queue?: boolean;
 			attachments?: {
 				path: string;
 				mode?: "inline" | "reference" | "lines";
@@ -305,6 +313,9 @@ export type ClientMessage =
 			customSystemPrompt?: string;
 			disabledSkills?: string[];
 			disabledExtensions?: string[];
+			/** Vision bridge on/off + preferred "provider/id" model (null = auto). */
+			visionBridgeEnabled?: boolean;
+			visionBridgeModel?: string | null;
 	  }
 	/** Save the CURRENT settings as a named preset (overwrites if it exists). */
 	| { type: "save_preset"; name: string }
@@ -503,12 +514,26 @@ export interface UiSettingsPreset {
 	disabledExtensions: string[];
 }
 
+/** One vision-capable model the vision bridge can use (picker option). */
+export interface UiVisionBridgeModel {
+	provider: string;
+	id: string;
+	/** Human-readable label: "qwen3-vl-plus (dashscope)". */
+	label: string;
+}
+
 /** Full settings state pushed to the browser (settings_state). */
 export interface UiSettingsState {
 	promptMode: "append" | "replace";
 	customSystemPrompt: string;
 	disabledSkills: string[];
 	disabledExtensions: string[];
+	/** Vision bridge on/off (default on). Off → images are sent as-is. */
+	visionBridgeEnabled: boolean;
+	/** Preferred vision model as "provider/id", or null = auto-detect first. */
+	visionBridgeModel: string | null;
+	/** Vision-capable configured models available on this machine. */
+	visionModels: UiVisionBridgeModel[];
 	skills: UiSkillInfo[];
 	extensions: UiExtensionInfo[];
 	presets: UiSettingsPreset[];

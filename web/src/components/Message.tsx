@@ -322,7 +322,7 @@ function AttachmentCard({ message }: { message: UiMessage }) {
 	const details = (message.details ?? {}) as {
 		name?: string;
 		path?: string;
-		mode?: "inline" | "reference" | "lines";
+		mode?: "inline" | "reference" | "lines" | "image" | "bridged";
 		size?: number;
 		lines?: number;
 		startLine?: number;
@@ -332,6 +332,7 @@ function AttachmentCard({ message }: { message: UiMessage }) {
 	const name = details.name ?? details.path ?? t("attachment");
 	const isFolder = details.type === "folder";
 	const isReference = details.mode === "reference";
+	const isBridged = details.mode === "bridged";
 
 	const text = message.content
 		.filter((b): b is { type: "text"; text: string } => b.type === "text")
@@ -356,26 +357,38 @@ function AttachmentCard({ message }: { message: UiMessage }) {
 					<span className="attachcard-path">{details.path}</span>
 				)}
 				<span
-					className={`attachcard-mode ${details.mode === "lines" ? "lines" : isReference ? "ref" : "inline"}`}
+					className={`attachcard-mode ${details.mode === "lines" ? "lines" : isReference ? "ref" : isBridged ? "bridged" : "inline"}`}
 				>
 					{isReference
 						? isFolder
 							? t("folderRefShort")
 							: `${t("refOnlyShort")} · ${formatSize(details.size)}`
-						: image
-							? t("image")
-							: details.mode === "lines"
-								? t("inlineLinesRange", {
-										start: details.startLine ?? 1,
-										end: details.endLine ?? details.lines ?? 1,
-									})
-								: t("inlineLines", { n: details.lines ?? lines })}
+						: isBridged
+							? t("bridgedVision")
+							: image
+								? t("image")
+								: details.mode === "lines"
+									? t("inlineLinesRange", {
+											start: details.startLine ?? 1,
+											end: details.endLine ?? details.lines ?? 1,
+										})
+									: t("inlineLines", { n: details.lines ?? lines })}
 				</span>
 				{!isReference && (open ? <FiChevronDown /> : <FiChevronRight />)}
 			</button>
 			{!isReference &&
 				open &&
-				(image?.dataUrl ? (
+				(isBridged ? (
+					<>
+						<div className="attachcard-bridgenote">{t("bridgedVisionDetail")}</div>
+						{image?.dataUrl && (
+							<div className="attachcard-image">
+								<img src={image.dataUrl} alt={name} />
+							</div>
+						)}
+						{clean && <pre className="attachcard-content">{clean}</pre>}
+					</>
+				) : image?.dataUrl ? (
 					<div className="attachcard-image">
 						<img src={image.dataUrl} alt={name} />
 					</div>
@@ -400,12 +413,17 @@ function formatSize(bytes?: number): string {
 	return `${bytes} B`;
 }
 
-/** Strip the <file path="..."> ``` ... ``` </file> wrapper for display. */
+/** Strip the <file path="..."> ``` ... ``` </file> or <vision-bridge> ...
+ * </vision-bridge> wrapper for display. */
 function stripFileWrapper(text: string): string {
 	const m = text.match(
 		/^\s*<file path="[^"]*"(?:\s+lines="[^"]*")?>\s*```\s*\n?([\s\S]*?)\n?```\s*<\/file>\s*$/,
 	);
-	return m ? m[1].trim() : text.trim();
+	if (m) return m[1].trim();
+	const vb = text.match(
+		/^\s*<vision-bridge>\s*([\s\S]*?)\s*<\/vision-bridge>\s*$/,
+	);
+	return vb ? vb[1].trim() : text.trim();
 }
 
 /**

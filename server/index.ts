@@ -346,7 +346,7 @@ wss.on("connection", (ws) => {
 		}
 		switch (msg.type) {
 			case "prompt":
-				void cs.prompt(msg.text, msg.attachments);
+				void cs.prompt(msg.text, msg.attachments, msg.queue);
 				break;
 			case "abort":
 				void cs.abort();
@@ -507,6 +507,8 @@ wss.on("connection", (ws) => {
 					customSystemPrompt: msg.customSystemPrompt,
 					disabledSkills: msg.disabledSkills,
 					disabledExtensions: msg.disabledExtensions,
+					visionBridgeEnabled: msg.visionBridgeEnabled,
+					visionBridgeModel: msg.visionBridgeModel,
 				});
 				break;
 			case "save_preset":
