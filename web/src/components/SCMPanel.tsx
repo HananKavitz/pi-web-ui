@@ -69,6 +69,17 @@ export interface ScmBranch {
 	current: boolean;
 }
 
+interface ScmCommit {
+	hash: string;
+	shortHash: string;
+	author: string;
+	date: string;
+	subject: string;
+	decorations: string;
+	/** The graph prefix emitted by `git log --graph` (for example `| * `). */
+	graph: string;
+}
+
 interface StatInfo {
 	add: number;
 	del: number;
@@ -207,6 +218,32 @@ function parseBranches(text: string): ScmBranch[] {
 	return out;
 }
 
+/** Parse one commit per line from `git log --graph` while preserving its graph prefix. */
+function parseCommitHistory(text: string): ScmCommit[] {
+	const out: ScmCommit[] = [];
+	for (const line of text.split("\n")) {
+		const tab = line.indexOf("\t");
+		if (tab < 0) continue; // connector-only graph line
+		const prefixAndHash = line.slice(0, tab);
+		const match = prefixAndHash.match(/([0-9a-f]{7,40})$/i);
+		if (!match || match.index === undefined) continue;
+		const fields = line.slice(tab + 1).split("\t");
+		// cleanSection trims trailing whitespace, so an empty decoration field
+		// removes the final tab. Four fields is therefore a valid undecorated commit.
+		if (fields.length < 4) continue;
+		out.push({
+			hash: match[1],
+			shortHash: fields[0],
+			author: fields[1],
+			date: fields[2],
+			subject: fields[3],
+			decorations: fields[4] ?? "",
+			graph: prefixAndHash.slice(0, match.index),
+		});
+	}
+	return out;
+}
+
 /** Parse `git diff --stat` output: "path | 3 ++-" → {add, del} per path. */
 function mergeStats(sections: string[]): Map<string, StatInfo> {
 	const map = new Map<string, StatInfo>();
@@ -283,6 +320,11 @@ export function ScmPanel({
 	const [branches, setBranches] = useState<ScmBranch[]>([]);
 	const [branchSel, setBranchSel] = useState("");
 	const [statMap, setStatMap] = useState<Map<string, StatInfo>>(new Map());
+	const [viewMode, setViewMode] = useState<"changes" | "history">("changes");
+	const [history, setHistory] = useState<ScmCommit[]>([]);
+	const [selectedCommit, setSelectedCommit] = useState<ScmCommit | null>(null);
+	const [commitDetail, setCommitDetail] = useState("");
+	const [commitLoading, setCommitLoading] = useState(false);
 	const [selected, setSelected] = useState<ScmFile | null>(null);
 	const [fileDiff, setFileDiff] = useState<{
 		file: ScmFile;
@@ -474,6 +516,9 @@ export function ScmPanel({
 				setStatus(null);
 				setBranches([]);
 				setStatMap(new Map());
+				setHistory([]);
+				setSelectedCommit(null);
+				setCommitDetail("");
 				setFileDiff(null);
 				return;
 			}
@@ -527,11 +572,13 @@ export function ScmPanel({
 				`git -c color.ui=false --no-pager branch --list`,
 				`git -c color.ui=false --no-pager diff --stat`,
 				`git -c color.ui=false --no-pager diff --cached --stat`,
+				`git -c color.ui=false --no-pager log --all --graph --decorate=short --date=short --pretty=format:%H%x09%h%x09%an%x09%ad%x09%s%x09%D -n 120`,
 			],
-			4,
+			5,
 		)
-			.then(([statusText, branchText, statText, cachedStatText]) => {
+			.then(([statusText, branchText, statText, cachedStatText, historyText]) => {
 				applyStatus(statusText, branchText, statText, cachedStatText);
+				setHistory(parseCommitHistory(historyText));
 			})
 			.catch((err: unknown) => {
 				setError(
@@ -546,6 +593,7 @@ export function ScmPanel({
 	const showFileDiff = useCallback(
 		(f: ScmFile) => {
 			setSelected(f);
+			setSelectedCommit(null);
 			if (f.x === "?" && f.y === "?") {
 				setFileDiff({ file: f, staged: "", worktree: "", untracked: true });
 				return;
@@ -571,6 +619,32 @@ export function ScmPanel({
 					),
 				)
 				.finally(() => setDiffLoading(false));
+		},
+		[sendQuery, t],
+	);
+
+	const showCommitDetail = useCallback(
+		(commit: ScmCommit) => {
+			setSelectedCommit(commit);
+			setSelected(null);
+			setFileDiff(null);
+			setCommitDetail("");
+			setCommitLoading(true);
+			setError(null);
+			const esc = commit.hash.replace(/'/g, `'\\''`);
+			sendQuery(
+				[`git -c color.ui=false --no-pager show --no-ext-diff --find-renames --format=fuller --stat --patch '${esc}'`],
+				1,
+			)
+				.then(([detail]) => setCommitDetail(detail))
+				.catch((err: unknown) =>
+					setError(
+						t("scmQueryFailed", {
+							error: err instanceof Error ? err.message : String(err),
+						}),
+					),
+				)
+				.finally(() => setCommitLoading(false));
 		},
 		[sendQuery, t],
 	);
@@ -732,6 +806,32 @@ export function ScmPanel({
 						<FiGitBranch />
 						{t("scmTitle")}
 					</span>
+					<div className="scm-view-tabs" role="tablist">
+						<button
+							type="button"
+							role="tab"
+							aria-selected={viewMode === "changes"}
+							className={viewMode === "changes" ? "active" : ""}
+							onClick={() => {
+								setViewMode("changes");
+								setError(null);
+							}}
+						>
+							{t("scmChanges")}
+						</button>
+						<button
+							type="button"
+							role="tab"
+							aria-selected={viewMode === "history"}
+							className={viewMode === "history" ? "active" : ""}
+							onClick={() => {
+								setViewMode("history");
+								setError(null);
+							}}
+						>
+							{t("scmHistory")}
+						</button>
+					</div>
 						<button
 							type="button"
 							className="panel-refresh"
@@ -834,6 +934,50 @@ export function ScmPanel({
 
 			{/* body: files + diff */}
 			<div className="scm-body">
+				{viewMode === "history" ? (
+					<div className="scm-history">
+						<div className="scm-files-header">
+							<span>{t("scmHistory")}</span>
+							{history.length > 0 && (
+								<span className="scm-files-count">{history.length}</span>
+							)}
+						</div>
+						<div className="scm-history-list">
+							{notRepo ? (
+								<div className="scm-empty">{t("scmNotGitRepo")}</div>
+							) : !status ? (
+								<div className="scm-empty">
+									{chat.status === "open" ? t("scmLoading") : t("scmConnecting")}
+								</div>
+							) : history.length === 0 ? (
+								<div className="scm-empty">{t("scmNoHistory")}</div>
+							) : (
+								history.map((commit) => (
+									<button
+										key={commit.hash}
+										type="button"
+										className={`scm-commit ${selectedCommit?.hash === commit.hash ? "active" : ""}`}
+										onClick={() => showCommitDetail(commit)}
+										title={commit.hash}
+									>
+										<span className="scm-commit-graph" aria-hidden="true">
+											{commit.graph || "* "}
+										</span>
+										<span className="scm-commit-info">
+											<span className="scm-commit-subject">{commit.subject}</span>
+											<span className="scm-commit-meta">
+												{commit.shortHash} · {commit.author} · {commit.date}
+											</span>
+											{commit.decorations && (
+												<span className="scm-commit-refs">{commit.decorations}</span>
+											)}
+										</span>
+									</button>
+								))
+							)}
+						</div>
+					</div>
+				) : (
 				<div className="scm-files">
 					<div className="scm-files-header">
 						<span>{t("scmChanges")}</span>
@@ -884,39 +1028,67 @@ export function ScmPanel({
 						)}
 					</div>
 				</div>
+				)}
 
 				<div className="scm-diff">
 					<div className="scm-diff-header">
-						<span>{selected ? selected.path : t("scmDiff")}</span>
-						{diffLoading && <span className="scm-diff-loading">{t("scmLoading")}</span>}
+						<span>
+							{viewMode === "history"
+								? selectedCommit
+									? `${selectedCommit.shortHash} ${selectedCommit.subject}`
+									: t("scmCommitDetail")
+								: selected
+									? selected.path
+									: t("scmDiff")}
+						</span>
+						{(viewMode === "history" ? commitLoading : diffLoading) && (
+							<span className="scm-diff-loading">{t("scmLoading")}</span>
+						)}
 					</div>
 					<div className="scm-diff-body">
-						{error && <div className="scm-error">{error}</div>}
-						{!selected && !error && (
-							<div className="scm-empty">{t("scmSelectFileHint")}</div>
-						)}
-						{selected && !fileDiff && !error && (
-							<div className="scm-empty">{t("scmLoading")}</div>
-						)}
-						{selected && fileDiff && fileDiff.untracked && (
-							<div className="scm-empty">{t("scmUntrackedNote")}</div>
-						)}
-						{selected && fileDiff && !fileDiff.untracked && (
+						{viewMode === "history" ? (
 							<>
-								{fileDiff.staged && (
-									<>
-										<div className="scm-diff-section">{t("scmStaged")}</div>
-										{renderDiff(fileDiff.staged)}
-									</>
+								{error && <div className="scm-error">{error}</div>}
+								{!selectedCommit && !error && (
+									<div className="scm-empty">{t("scmSelectCommitHint")}</div>
 								)}
-								{fileDiff.worktree && (
-									<>
-										<div className="scm-diff-section">{t("scmUnstaged")}</div>
-										{renderDiff(fileDiff.worktree)}
-									</>
+								{selectedCommit && commitLoading && !error && (
+									<div className="scm-empty">{t("scmLoading")}</div>
 								)}
-								{!fileDiff.staged && !fileDiff.worktree && (
-									<div className="scm-empty">{t("scmNoDiff")}</div>
+								{selectedCommit && !commitLoading && !error && commitDetail
+									? renderDiff(commitDetail)
+									: null}
+							</>
+						) : (
+							<>
+								{error && <div className="scm-error">{error}</div>}
+								{!selected && !error && (
+									<div className="scm-empty">{t("scmSelectFileHint")}</div>
+								)}
+								{selected && !fileDiff && !error && (
+									<div className="scm-empty">{t("scmLoading")}</div>
+								)}
+								{selected && fileDiff && fileDiff.untracked && (
+									<div className="scm-empty">{t("scmUntrackedNote")}</div>
+								)}
+								{selected && fileDiff && !fileDiff.untracked && (
+									<>
+										{fileDiff.staged && (
+											<>
+												<div className="scm-diff-section">{t("scmStaged")}</div>
+												{renderDiff(fileDiff.staged)}
+											</>
+										)}
+										{fileDiff.worktree && (
+											<>
+												<div className="scm-diff-section">{t("scmUnstaged")}</div>
+												{renderDiff(fileDiff.worktree)}
+											</>
+										)}
+										{!fileDiff.staged && !fileDiff.worktree && (
+											<div className="scm-empty">{t("scmNoDiff")}</div>
+										)}
+									</>
 								)}
 							</>
 						)}

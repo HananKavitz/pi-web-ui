@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	FiCheck,
+	FiCode,
 	FiCornerDownLeft,
+	FiEdit3,
+	FiEye,
 	FiLink,
 	FiPlus,
+	FiSave,
 	FiX,
 } from "react-icons/fi";
 import type { ClientMessage, FileContent } from "../types";
+import { Markdown } from "./Markdown";
 import { useT } from "../i18n";
 import { getClientId } from "../use-chat";
 
@@ -50,6 +55,12 @@ export function FilePreview({
 	const [sel, setSel] = useState<Range | null>(null);
 	const [dragging, setDragging] = useState(false);
 	const [added, setAdded] = useState(false);
+	// Editing is deliberately opt-in for every newly opened file.
+	const [editing, setEditing] = useState(false);
+	const [draft, setDraft] = useState("");
+	// Markdown files open in rendered view; raw source remains one click away.
+	const [markdownPreview, setMarkdownPreview] = useState(true);
+	const editViewRef = useRef(false);
 	// Word wrap for the text preview (default on).
 	const [wrap, setWrap] = useState(true);
 	const anchorRef = useRef(0);
@@ -61,6 +72,10 @@ export function FilePreview({
 		setLoading(true);
 		setLoaded(null);
 		setSel(null);
+		setEditing(false);
+		setDraft("");
+		setMarkdownPreview(true);
+		editViewRef.current = false;
 		send({ type: "read_file", path: file.path });
 	}, [file.path, send]);
 
@@ -69,15 +84,21 @@ export function FilePreview({
 	useEffect(() => {
 		if (content && content.path === file.path) {
 			setLoaded(content);
+			if (!editing) setDraft(content.text);
 			setLoading(false);
 		}
-	}, [content, file.path]);
+	}, [content, editing, file.path]);
 
 	// Escape closes; Ctrl/Cmd+A selects everything in the preview.
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === "Escape") {
-				onClose();
+				handleClose();
+				return;
+			}
+			if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && editing) {
+				e.preventDefault();
+				saveEditing();
 				return;
 			}
 			const target = e.target as HTMLElement | null;
@@ -94,7 +115,7 @@ export function FilePreview({
 		document.addEventListener("keydown", onKey);
 		return () => document.removeEventListener("keydown", onKey);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [onClose, loaded]);
+	}, [onClose, loaded, editing, draft]);
 
 	// End drag selection on mouseup anywhere.
 	useEffect(() => {
@@ -145,12 +166,55 @@ export function FilePreview({
 		addedTimer.current = setTimeout(() => setAdded(false), 1400);
 	};
 
+	const canEdit =
+		loaded !== null && loaded.kind === "text" && !loaded.binary && !loaded.truncated;
+
+	const cancelEditing = () => {
+		setDraft(loaded?.text ?? "");
+		setEditing(false);
+		if (editViewRef.current) setMarkdownPreview(true);
+	};
+
+	const toggleEditing = () => {
+		if (editing) {
+			if (draft !== (loaded?.text ?? "") && !window.confirm(t("discardFileChanges"))) {
+				return;
+			}
+			cancelEditing();
+			return;
+		}
+		if (!canEdit || !loaded) return;
+		editViewRef.current = isMarkdownFile(file.name) && markdownPreview;
+		if (isMarkdownFile(file.name)) setMarkdownPreview(false);
+		setSel(null);
+		setDraft(loaded.text);
+		setEditing(true);
+	};
+
+	const saveEditing = () => {
+		if (!editing || !loaded || !canEdit) return;
+		if (!send({ type: "write_file", path: file.path, text: draft })) return;
+		setEditing(false);
+		if (editViewRef.current) setMarkdownPreview(true);
+		setSel(null);
+	};
+
+	const handleClose = () => {
+		if (editing && draft !== (loaded?.text ?? "") && !window.confirm(t("discardFileChanges"))) {
+			return;
+		}
+		onClose();
+	};
+
 	const selCount = sel ? sel.end - sel.start + 1 : 0;
 	const isBinary = loaded?.binary ?? false;
 	const truncated = loaded?.truncated ?? false;
 	// Preview category from the server ("text" while loading). Media kinds are
 	// streamed over the /api/file HTTP endpoint; "none" is never previewable.
 	const kind = loaded?.kind ?? "text";
+	const isMarkdown = isMarkdownFile(file.name);
+	const showMarkdown =
+		isMarkdown && markdownPreview && !editing && kind === "text" && !isBinary;
 	// /api/file resolves against the requesting client's workspace (the opened
 	// project), not the server's startup cwd — pass clientId so they can differ.
 	const mediaUrl = (p: string) =>
@@ -160,7 +224,7 @@ export function FilePreview({
 		<div
 			className="fp-overlay"
 			onMouseDown={(e) => {
-				if (e.target === e.currentTarget) onClose();
+				if (e.target === e.currentTarget) handleClose();
 			}}
 		>
 			<div className="fp">
@@ -177,7 +241,39 @@ export function FilePreview({
 						{loaded && ` · ${formatSize(loaded.size)}`}
 					</span>
 					<span className="fp-head-actions">
-						{kind === "text" && !isBinary && (
+						{isMarkdown && kind === "text" && !isBinary && loaded && (
+							<button
+								type="button"
+								className={`fp-attach markdown ${markdownPreview ? "on" : ""}`}
+								data-tip={
+									markdownPreview
+										? t("showMarkdownSource")
+										: t("showMarkdownPreview")
+								}
+								disabled={editing}
+								onClick={() => setMarkdownPreview((value) => !value)}
+							>
+								{markdownPreview ? <FiEye /> : <FiCode />}
+							</button>
+						)}
+						{kind === "text" && !isBinary && loaded && (
+							<button
+								type="button"
+								className={`fp-attach edit ${editing ? "on" : ""}`}
+								data-tip={
+									truncated
+										? t("fileEditTruncated")
+										: editing
+											? t("exitEditFile")
+											: t("editFile")
+								}
+								disabled={!canEdit && !editing}
+								onClick={toggleEditing}
+							>
+								<FiEdit3 />
+							</button>
+						)}
+						{kind === "text" && !isBinary && !showMarkdown && (
 							<button
 								type="button"
 								className={`fp-attach wrap ${wrap ? "on" : ""}`}
@@ -209,7 +305,7 @@ export function FilePreview({
 							type="button"
 							className="fp-close"
 							title={t("close")}
-							onClick={onClose}
+							onClick={handleClose}
 						>
 							<FiX />
 						</button>
@@ -247,6 +343,12 @@ export function FilePreview({
 					</div>
 				)}
 
+				{!loading && showMarkdown && loaded && (
+					<div className="fp-markdown msg-text">
+						<Markdown text={loaded.text} />
+					</div>
+				)}
+
 				{!loading &&
 					isBinary &&
 					kind !== "image" &&
@@ -261,7 +363,20 @@ export function FilePreview({
 						</div>
 					)}
 
+				{!loading && editing && kind === "text" && !isBinary && loaded && (
+					<textarea
+						className={`fp-editor ${wrap ? "" : "no-wrap"}`}
+						value={draft}
+						onChange={(e) => setDraft(e.target.value)}
+						wrap={wrap ? "soft" : "off"}
+						spellCheck={false}
+						autoFocus
+					/>
+				)}
+
 				{!loading &&
+					!showMarkdown &&
+					!editing &&
 					kind === "text" &&
 					!isBinary &&
 					loaded &&
@@ -269,7 +384,12 @@ export function FilePreview({
 						<div className="fp-empty">{t("emptyFile")}</div>
 					)}
 
-				{!loading && kind === "text" && !isBinary && lines.length > 0 && (
+				{!loading &&
+					!showMarkdown &&
+					!editing &&
+					kind === "text" &&
+					!isBinary &&
+					lines.length > 0 && (
 					<div
 						className={`fp-code ${dragging ? "dragging" : ""} ${
 							wrap ? "" : "no-wrap"
@@ -310,50 +430,74 @@ export function FilePreview({
 				)}
 
 				<div className="fp-foot">
-					{kind === "text" && (
+					{editing ? (
 						<>
-							<span className="fp-hint">
-								{sel
-									? t("selectedRange", {
-											n: selCount,
-											start: sel.start,
-											end: sel.end,
-										})
-									: t("selectLinesHint")}
-							</span>
+							<span className="fp-hint">{t("editFile")}</span>
 							<div className="fp-actions">
-								<button
-									type="button"
-									className="btn"
-									disabled={lines.length === 0}
-									onClick={selectAll}
-								>
-									{t("selectAll")}
-								</button>
-								<button
-									type="button"
-									className="btn"
-									disabled={!sel}
-									onClick={() => setSel(null)}
-								>
-									{t("clearSelection")}
+								<button type="button" className="btn" onClick={toggleEditing}>
+									{t("cancel")}
 								</button>
 								<button
 									type="button"
 									className="btn primary"
-									disabled={!sel || isBinary}
-									onClick={addToChat}
+									disabled={draft === (loaded?.text ?? "")}
+									onClick={saveEditing}
 								>
-									{added ? <FiCheck /> : null}
-									{added ? t("addedToChat") : t("addToChat")}
+									<FiSave /> {t("saveFile")}
 								</button>
 							</div>
 						</>
+					) : (
+						!showMarkdown && kind === "text" && (
+							<>
+								<span className="fp-hint">
+									{sel
+										? t("selectedRange", {
+												n: selCount,
+												start: sel.start,
+												end: sel.end,
+											})
+										: t("selectLinesHint")}
+								</span>
+								<div className="fp-actions">
+									<button
+										type="button"
+										className="btn"
+										disabled={lines.length === 0}
+										onClick={selectAll}
+									>
+										{t("selectAll")}
+									</button>
+									<button
+										type="button"
+										className="btn"
+										disabled={!sel}
+										onClick={() => setSel(null)}
+									>
+										{t("clearSelection")}
+									</button>
+									<button
+										type="button"
+										className="btn primary"
+										disabled={!sel || isBinary}
+										onClick={addToChat}
+									>
+										{added ? <FiCheck /> : null}
+										{added ? t("addedToChat") : t("addToChat")}
+									</button>
+								</div>
+							</>
+						)
 					)}
 				</div>
 			</div>
 		</div>
 	);
+}
+
+function isMarkdownFile(name: string): boolean {
+	const lower = name.toLowerCase();
+	return lower.endsWith(".md") || lower.endsWith(".markdown");
 }
 
 function formatSize(bytes: number): string {

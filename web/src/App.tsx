@@ -21,6 +21,7 @@ import { useT } from "./i18n";
 import { FiAlertCircle, FiAlertTriangle, FiInfo, FiX } from "react-icons/fi";
 import type { Notice } from "./use-chat";
 import { fileToProcessedImage, isRasterImage, type ProcessedImage } from "./image-paste";
+import { randomUuid } from "./uuid";
 import {
 	loadSoundSettings,
 	playSound,
@@ -117,6 +118,8 @@ export function App() {
 	const prevStreaming = useRef<boolean | null>(null);
 	const prevDialogId = useRef<number | null>(null);
 	const lastErrorNotice = useRef(0);
+	// Remembers a terminal-view click made before the WebSocket is ready.
+	const terminalOpenRequested = useRef(false);
 
 	useEffect(() => {
 		saveSoundSettings(sound);
@@ -284,6 +287,29 @@ export function App() {
 		[send],
 	);
 
+	const createShell = useCallback(() => {
+		if (!chat.ready || chat.terminals.length !== 0) return false;
+		terminal.create({
+			id: randomUuid(),
+			title: t("terminalTitle", { n: 1 }),
+			cwd: chat.state?.cwd ?? "",
+			running: true,
+			exitCode: null,
+		});
+		return true;
+	}, [chat.ready, chat.state?.cwd, chat.terminals.length, t, terminal]);
+
+	// If the user clicked Terminal while the initial connection was still
+	// loading, complete that request as soon as the session becomes ready.
+	useEffect(() => {
+		if (!terminalOpenRequested.current) return;
+		if (view !== "terminal" || chat.terminals.length !== 0) {
+			terminalOpenRequested.current = false;
+			return;
+		}
+		if (createShell()) terminalOpenRequested.current = false;
+	}, [chat.terminals.length, createShell, view]);
+
 	return (
 		// Swallowing page-level drops prevents the browser from navigating away
 		// when a file is dropped outside the input bar (the input bar has its
@@ -298,6 +324,13 @@ export function App() {
 				send={send}
 				view={view}
 				onViewChange={(v) => {
+					// The terminal panel stays mounted while hidden. Create the first
+					// shell on the user's terminal-view click, not on initial mount.
+					terminalOpenRequested.current =
+						v === "terminal" && chat.terminals.length === 0;
+					if (terminalOpenRequested.current && createShell()) {
+						terminalOpenRequested.current = false;
+					}
 					setView(v);
 					setDrawer(null);
 				}}

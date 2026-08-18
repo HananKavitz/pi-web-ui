@@ -1454,6 +1454,34 @@ body {
 	color: var(--accent);
 }
 
+.scm-view-tabs {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	margin-left: auto;
+	padding: 2px;
+	border: 1px solid var(--border);
+	border-radius: 7px;
+	background: var(--bg-elev2);
+}
+.scm-view-tabs button {
+	border: none;
+	border-radius: 5px;
+	background: transparent;
+	color: var(--text-faint);
+	font-size: 12px;
+	padding: 4px 9px;
+	cursor: pointer;
+}
+.scm-view-tabs button:hover {
+	color: var(--text);
+}
+.scm-view-tabs button.active {
+	background: var(--accent-soft);
+	color: var(--accent);
+	font-weight: 600;
+}
+
 .scm-row {
 	display: flex;
 	align-items: center;
@@ -1534,7 +1562,8 @@ body {
 	min-height: 0;
 }
 
-.scm-files {
+.scm-files,
+.scm-history {
 	width: 300px;
 	flex-shrink: 0;
 	display: flex;
@@ -1564,10 +1593,65 @@ body {
 	padding: 0 7px;
 }
 
-.scm-files-list {
+.scm-files-list,
+.scm-history-list {
 	flex: 1;
 	overflow-y: auto;
 	min-height: 0;
+}
+
+.scm-commit {
+	width: 100%;
+	display: flex;
+	align-items: flex-start;
+	gap: 6px;
+	padding: 7px 10px 7px 8px;
+	border: none;
+	border-left: 2px solid transparent;
+	background: transparent;
+	color: var(--text);
+	text-align: left;
+	cursor: pointer;
+}
+.scm-commit:hover,
+.scm-commit.active {
+	background: var(--accent-soft);
+	border-left-color: var(--accent);
+}
+.scm-commit-graph {
+	min-width: 34px;
+	max-width: 48px;
+	overflow: hidden;
+	white-space: pre;
+	font-family: var(--mono);
+	font-size: 12px;
+	line-height: 1.35;
+	color: var(--accent);
+}
+.scm-commit-info {
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.scm-commit-subject {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 12.5px;
+	color: var(--text);
+}
+.scm-commit-meta,
+.scm-commit-refs {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--mono);
+	font-size: 10.5px;
+	color: var(--text-faint);
+}
+.scm-commit-refs {
+	color: var(--green);
 }
 
 .scm-file {
@@ -1760,7 +1844,8 @@ body {
 
 /* Narrow screens: shrink the files column so the diff keeps usable width. */
 @media (max-width: 768px) {
-	.scm-files {
+	.scm-files,
+	.scm-history {
 		width: 200px;
 	}
 	.scm-branch-current {
@@ -5318,10 +5403,21 @@ body {
 	color: #1a1a1a;
 }
 .fp-attach.wrap:hover,
-.fp-attach.wrap.on {
+.fp-attach.wrap.on,
+.fp-attach.edit:hover,
+.fp-attach.edit.on {
 	background: var(--accent);
 	border-color: var(--accent);
 	color: #fff;
+}
+.fp-attach:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+.fp-attach:disabled:hover {
+	background: var(--bg-elev);
+	border-color: var(--border);
+	color: var(--text-dim);
 }
 
 /* Tooltip for the header icon buttons (same pattern as .file-attach). */
@@ -5418,9 +5514,254 @@ body {
 	-webkit-user-select: none;
 }
 
+/* Rendered Markdown view for .md files. Reuse the chat Markdown typography via
+   the msg-text class, but give the preview its own scrollable body. */
+.fp-markdown {
+	flex: 1;
+	min-width: 0;
+	min-height: 0;
+	overflow: auto;
+	padding: 22px clamp(18px, 4vw, 48px) 34px;
+	background:
+		radial-gradient(circle at 10% 0%, rgba(139, 92, 246, 0.08), transparent 34%),
+		rgba(0, 0, 0, 0.22);
+	color: var(--text);
+	font-size: 14px;
+	line-height: 1.8;
+	word-break: break-word;
+	overflow-wrap: anywhere;
+}
+.fp-markdown .md {
+	width: 100%;
+	max-width: 860px;
+	min-width: 0;
+	margin: 0 auto;
+}
+.fp-markdown h1,
+.fp-markdown h2,
+.fp-markdown h3,
+.fp-markdown h4,
+.fp-markdown h5,
+.fp-markdown h6 {
+	position: relative;
+	margin: 1.35em 0 0.55em;
+	color: var(--text);
+	font-weight: 750;
+	line-height: 1.28;
+	letter-spacing: -0.015em;
+}
+.fp-markdown h1 {
+	margin-top: 0;
+	padding-bottom: 0.42em;
+	border-bottom: 1px solid var(--border);
+	font-size: clamp(24px, 3vw, 34px);
+	letter-spacing: -0.03em;
+}
+.fp-markdown h2 {
+	padding-bottom: 0.28em;
+	border-bottom: 1px solid var(--border-soft);
+	font-size: clamp(19px, 2.2vw, 25px);
+}
+.fp-markdown h3 {
+	color: #c4b5fd;
+	font-size: 19px;
+}
+.fp-markdown h4,
+.fp-markdown h5,
+.fp-markdown h6 {
+	font-size: 16px;
+}
+.fp-markdown p {
+	margin: 0.8em 0;
+	line-height: 1.85;
+}
+.fp-markdown p:first-child {
+	margin-top: 0;
+}
+.fp-markdown p:last-child {
+	margin-bottom: 0;
+}
+.fp-markdown strong {
+	color: #f3f4f6;
+	font-weight: 720;
+}
+.fp-markdown em {
+	color: #c4b5fd;
+}
+.fp-markdown del {
+	color: var(--text-faint);
+}
+.fp-markdown a {
+	color: #a78bfa;
+	text-decoration: underline;
+	text-decoration-color: rgba(167, 139, 250, 0.45);
+	text-underline-offset: 3px;
+	transition: color 0.12s, text-decoration-color 0.12s;
+}
+.fp-markdown a:hover {
+	color: #c4b5fd;
+	text-decoration-color: currentColor;
+}
+.fp-markdown ul,
+.fp-markdown ol {
+	margin: 0.8em 0;
+	padding-left: 1.8em;
+}
+.fp-markdown li {
+	margin: 0.28em 0;
+	padding-left: 0.2em;
+}
+.fp-markdown li::marker {
+	color: var(--accent);
+	font-weight: 700;
+}
+.fp-markdown li > p {
+	margin: 0.35em 0;
+}
+.fp-markdown blockquote {
+	margin: 1.1em 0;
+	padding: 0.7em 1.1em;
+	border: 1px solid rgba(139, 92, 246, 0.2);
+	border-left: 4px solid var(--accent);
+	border-radius: 0 10px 10px 0;
+	background: rgba(139, 92, 246, 0.08);
+	color: var(--text-dim);
+}
+.fp-markdown blockquote p:last-child {
+	margin-bottom: 0;
+}
+.fp-markdown hr {
+	margin: 1.8em 0;
+	border: 0;
+	border-top: 1px solid var(--border);
+}
+.fp-markdown table {
+	display: block;
+	width: 100%;
+	max-width: 100%;
+	overflow-x: auto;
+	margin: 1.15em 0;
+	border-collapse: collapse;
+	border-spacing: 0;
+	font-size: 13px;
+}
+.fp-markdown thead {
+	background: rgba(139, 92, 246, 0.12);
+}
+.fp-markdown th,
+.fp-markdown td {
+	min-width: 90px;
+	padding: 8px 12px;
+	border: 1px solid var(--border);
+	text-align: left;
+	vertical-align: top;
+	line-height: 1.55;
+}
+.fp-markdown th {
+	color: var(--text);
+	font-weight: 700;
+	white-space: nowrap;
+}
+.fp-markdown tbody tr:nth-child(even) {
+	background: rgba(255, 255, 255, 0.025);
+}
+.fp-markdown tbody tr:hover {
+	background: rgba(139, 92, 246, 0.07);
+}
+.fp-markdown code {
+	font-family: var(--mono);
+	font-size: 0.88em;
+	word-break: break-word;
+}
+.fp-markdown :not(pre) > code {
+	padding: 0.16em 0.42em;
+	border: 1px solid var(--border-soft);
+	border-radius: 5px;
+	background: rgba(139, 92, 246, 0.1);
+	color: #ddd6fe;
+}
+.fp-markdown .codeblock {
+	max-width: 100%;
+	min-width: 0;
+	margin: 1.1em 0;
+}
+.fp-markdown .codeblock pre {
+	max-width: 100%;
+	min-width: 0;
+	padding: 14px 16px;
+	border-color: var(--border);
+	border-radius: 10px;
+	font-size: 12.5px;
+	line-height: 1.65;
+}
+.fp-markdown .codeblock pre code {
+	white-space: pre;
+	word-break: normal;
+}
+.fp-markdown img {
+	display: block;
+	box-sizing: border-box;
+	width: auto;
+	max-width: 100%;
+	height: auto;
+	max-height: min(62vh, 680px);
+	margin: 1.15em auto;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--bg-elev);
+	box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+	object-fit: contain;
+}
+.fp-markdown figcaption {
+	margin-top: -0.7em;
+	color: var(--text-faint);
+	font-size: 12px;
+	font-style: italic;
+	text-align: center;
+}
+.fp-markdown input[type="checkbox"] {
+	margin-right: 0.45em;
+	accent-color: var(--accent);
+}
+.fp-markdown kbd {
+	padding: 0.12em 0.45em;
+	border: 1px solid var(--border);
+	border-bottom-width: 2px;
+	border-radius: 5px;
+	background: var(--bg-elev2);
+	font-family: var(--mono);
+	font-size: 0.82em;
+	color: var(--text-dim);
+}
+
+/* Opt-in text editor. Unlike the line picker, this keeps native selection and
+   keyboard editing enabled. */
+.fp-editor {
+	flex: 1;
+	min-height: 0;
+	width: 100%;
+	resize: none;
+	border: none;
+	outline: none;
+	padding: 12px 14px;
+	background: rgba(0, 0, 0, 0.22);
+	color: var(--text);
+	font-family: var(--mono);
+	font-size: 12px;
+	line-height: 1.6;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.fp-editor.no-wrap {
+	white-space: pre;
+	overflow-wrap: normal;
+	overflow-x: auto;
+}
+
 /* Media previews (image / video) fill the same body area as .fp-code. */
 .fp-media-wrap {
 	flex: 1;
+	min-width: 0;
 	min-height: 0;
 	overflow: auto;
 	background: rgba(0, 0, 0, 0.22);
@@ -5430,9 +5771,13 @@ body {
 	padding: 12px;
 }
 .fp-media {
+	display: block;
+	width: auto;
+	min-width: 0;
 	max-width: 100%;
 	max-height: 100%;
 	border-radius: 4px;
+	object-fit: contain;
 }
 
 .fp-line {
@@ -5766,6 +6111,13 @@ body {
 	}
 	.fp {
 		height: 92vh;
+	}
+	.fp-markdown {
+		padding: 16px 14px 24px;
+		font-size: 13.5px;
+	}
+	.fp-markdown img {
+		max-height: 50vh;
 	}
 
 	/* ---- footer: phones show only context usage + cwd, one line ---- */

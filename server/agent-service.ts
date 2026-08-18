@@ -4668,6 +4668,54 @@ ${transcript}
 		}
 	}
 
+	/** Save text from the file preview panel within the active workspace. */
+	async writeFile(relPath: string, text: string): Promise<void> {
+		try {
+			const root = resolve(this.cwd);
+			const wp = workspacePath(root, relPath);
+			if (!wp) {
+				this.emit({
+					type: "notice",
+					level: "warning",
+					text: `路径超出工作区：${relPath}`,
+				});
+				return;
+			}
+			if (Buffer.byteLength(text, "utf8") > 2 * 1024 * 1024) {
+				this.emit({
+					type: "notice",
+					level: "warning",
+					text: "文件内容过大，无法保存（上限 2MB）",
+				});
+				return;
+			}
+			const stat = statSync(wp.abs);
+			if (!stat.isFile()) {
+				this.emit({
+					type: "notice",
+					level: "warning",
+					text: `不是文件：${relPath}`,
+				});
+				return;
+			}
+			writeFileSync(wp.abs, text, "utf8");
+			this.emit({
+				type: "notice",
+				level: "info",
+				text: `已保存：${wp.rel}`,
+			});
+			// Re-read through the same path as the preview request so the client
+			// gets the canonical content, line count and file size after saving.
+			await this.readFile(wp.rel);
+		} catch (err) {
+			this.emit({
+				type: "notice",
+				level: "error",
+				text: `保存文件失败：${(err as Error).message}`,
+			});
+		}
+	}
+
 	async cycleModel(): Promise<void> {
 		try {
 			await this.session.cycleModel();

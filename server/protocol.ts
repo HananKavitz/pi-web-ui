@@ -251,6 +251,8 @@ export type ClientMessage =
 	| { type: "list_files"; path?: string }
 	/** Read a workspace file for the preview panel (size-capped, binary-safe). */
 	| { type: "read_file"; path: string }
+	/** Save text edited in the file preview panel. */
+	| { type: "write_file"; path: string; text: string }
 	| { type: "list_models" }
 	| { type: "set_model"; modelId: string }
 	| { type: "set_thinking"; level: string }
