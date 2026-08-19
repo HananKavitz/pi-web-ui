@@ -2,6 +2,13 @@
 
 [English](https://github.com/xing-shuyin/pi-web-ui/blob/main/README.md) | **简体中文**
 
+[![npm 版本](https://img.shields.io/npm/v/pi-web-ui?color=cb3837&logo=npm)](https://www.npmjs.com/package/pi-web-ui)
+[![Node.js](https://img.shields.io/node/v/pi-web-ui?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![许可证](https://img.shields.io/github/license/xing-shuyin/pi-web-ui)](LICENSE)
+
+> 一个精致的 pi 浏览器界面：流式对话、查看工具调用、管理文件，
+> 在一个工作台里完成开发任务。
+
 [pi 编码智能体](https://pi.dev) 的 Web 聊天界面 —— 智能体通过 pi SDK 在服务端进程内运行，
 事件经 WebSocket 流式推送到浏览器。支持思考块与工具调用、附件与图片问答、内置终端、
 模型管理，以及设置面板（自定义系统提示词、技能/插件开关、设置预设一键应用）等功能。
@@ -9,7 +16,10 @@
 
 ## 作者的其他项目
 
-也可以看看作者的另一个项目：[dsh-ui-tools](https://github.com/xing-shuyin/dsh-ui-tools)，这是一个用于在 DSH 生态中构建和扩展 UI 工具的配套项目。
+> **正在使用 DSH 构建工具？**
+>
+> [**dsh-ui-tools**](https://github.com/xing-shuyin/dsh-ui-tools) 是作者的配套项目，
+> 用于在 DSH 生态中构建和扩展 UI 工具。
 
 ## 功能特性
 
@@ -214,8 +224,6 @@ server {
   或把上面的 server 块放到 80/443 端口。
 
 带 frp 内网穿透的完整可运行示例：`deploy/nginx-subpath.conf`。
-
-## License
 
 ## License
 

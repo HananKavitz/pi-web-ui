@@ -2,6 +2,13 @@
 
 **English** | [简体中文](https://github.com/xing-shuyin/pi-web-ui/blob/main/README.zh-CN.md)
 
+[![npm version](https://img.shields.io/npm/v/pi-web-ui?color=cb3837&logo=npm)](https://www.npmjs.com/package/pi-web-ui)
+[![Node.js](https://img.shields.io/node/v/pi-web-ui?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![License](https://img.shields.io/github/license/xing-shuyin/pi-web-ui)](LICENSE)
+
+> A polished browser interface for pi: stream conversations, inspect tools, manage files,
+> and run your workspace from one place.
+
 A web chat interface for the [pi coding agent](https://pi.dev) — the agent runs
 in-process via the pi SDK and streams events to the browser over WebSocket. Chat
 with thinking blocks and tool calls, attach files, ask about images, use a
@@ -9,9 +16,11 @@ built-in terminal, manage models, tweak the system prompt, toggle skills and
 extensions on/off, and save/apply settings presets — all from a settings panel.
 Requires Node.js ≥ 22.19 and a configured pi install.
 
-## More tools from the author
+## More from the author
 
-Also check out [dsh-ui-tools](https://github.com/xing-shuyin/dsh-ui-tools), a companion project from the author for building and extending UI tools in the DSH ecosystem.
+> **Building with DSH?**
+>
+> [**dsh-ui-tools**](https://github.com/xing-shuyin/dsh-ui-tools) is the author's companion project for building and extending UI tools in the DSH ecosystem.
 
 ## Features
 
@@ -230,8 +239,6 @@ Key points:
   firewall rule) — or put the whole server block above on port 80/443.
 
 Full working example (with an frp tunnel): `deploy/nginx-subpath.conf`.
-
-## License
 
 ## License
 
