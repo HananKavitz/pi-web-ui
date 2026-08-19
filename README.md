@@ -9,6 +9,10 @@ built-in terminal, manage models, tweak the system prompt, toggle skills and
 extensions on/off, and save/apply settings presets — all from a settings panel.
 Requires Node.js ≥ 22.19 and a configured pi install.
 
+## More tools from the author
+
+Also check out [dsh-ui-tools](https://github.com/xing-shuyin/dsh-ui-tools), a companion project from the author for building and extending UI tools in the DSH ecosystem.
+
 ## Features
 
 **Chat**
