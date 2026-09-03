@@ -60,7 +60,7 @@ interface TopBarProps {
 	onSoundChange: (settings: SoundSettings) => void;
 	onSoundPreview: (kind: SoundKind) => void;
 	/** Theme list + current selection + switch handler (owned by App). */
-	themes: { id: string; name: string; builtin: boolean }[];
+	themes: { id: string; name: string; builtin: boolean; nameEn?: string }[];
 	theme: string | null;
 	onThemeChange: (id: string | null) => void;
 }
@@ -528,7 +528,7 @@ export function TopBar({
 									setThemeOpen(false);
 								}}
 							>
-								{th.name}
+								{locale === "en" ? (th.nameEn ?? th.name) : th.name}
 							</DropdownItem>
 						))}
 					</Dropdown>
@@ -676,7 +676,7 @@ export function TopBar({
 									setMoreOpen(false);
 								}}
 							>
-								{th.name}
+								{locale === "en" ? (th.nameEn ?? th.name) : th.name}
 							</DropdownItem>
 						))}
 						<div className="dd-header">{t("update")}</div>
